@@ -1,9 +1,11 @@
+import crypto from "node:crypto";
 import path from "node:path";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { QueryResult } from "pg";
 import { getPool } from "@/lib/db";
 import { AuthenticatedAppUser } from "@/types/telegram";
 import { CardRecord } from "@/types/cards";
+import { TaskSummary } from "@/types/tasks";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_CAPTION_LENGTH = 280;
@@ -11,6 +13,7 @@ const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "im
 
 let schemaReady = false;
 let storageMode: "database" | "local" | null = null;
+let localStoreMutationQueue: Promise<void> = Promise.resolve();
 
 type LocalUserRecord = {
   telegramId: number;
@@ -20,6 +23,10 @@ type LocalUserRecord = {
   displayName: string;
   language: AuthenticatedAppUser["language"];
   xp: number;
+  currentStreak: number;
+  lastCheckInDate?: string;
+  referralCode: string;
+  referredByTelegramId?: number;
 };
 
 type LocalStore = {
@@ -89,6 +96,34 @@ function normalizeCardRecord(card: Partial<CardRecord>): CardRecord {
   };
 }
 
+function buildReferralCode(user: AuthenticatedAppUser) {
+  return user.username || `ref_${user.telegramId}`;
+}
+
+function getTodayUtc() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getPreviousUtcDay(date: string) {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
+}
+
+function getEffectiveStreak(lastCheckInDate?: string, currentStreak = 0) {
+  if (!lastCheckInDate || currentStreak === 0) {
+    return 0;
+  }
+
+  const today = getTodayUtc();
+
+  if (lastCheckInDate === today || lastCheckInDate === getPreviousUtcDay(today)) {
+    return currentStreak;
+  }
+
+  return 0;
+}
+
 function parseLocalStore(contents: string) {
   try {
     return {
@@ -114,28 +149,66 @@ async function readLocalStore() {
   const contents = await readFile(storePath, "utf8");
   const parsed = parseLocalStore(contents);
   const store = parsed.store;
-  const normalizedStore = {
+  return {
     users: (store.users || []).map((user) => ({
       ...user,
       xp: user.xp ?? 0,
+      currentStreak: user.currentStreak ?? 0,
+      referralCode: user.referralCode || `ref_${user.telegramId}`,
     })),
     cards: (store.cards || []).map(normalizeCardRecord),
     votes: store.votes || [],
   } satisfies LocalStore;
-
-  if (parsed.recovered) {
-    await writeLocalStore(normalizedStore);
-  }
-
-  return normalizedStore;
 }
 
 async function writeLocalStore(store: LocalStore) {
   const storePath = await ensureLocalStore();
-  const tempPath = `${storePath}.${process.pid}.tmp`;
+  const tempPath = `${storePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
 
   await writeFile(tempPath, JSON.stringify(store, null, 2), "utf8");
   await rename(tempPath, storePath);
+}
+
+async function withLocalStoreFileLock<T>(callback: () => Promise<T>) {
+  const storePath = getLocalStorePath();
+  const lockPath = `${storePath}.lock`;
+
+  for (;;) {
+    try {
+      await mkdir(lockPath);
+      break;
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") {
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+
+  try {
+    return await callback();
+  } finally {
+    await rm(lockPath, { recursive: true, force: true });
+  }
+}
+
+async function mutateLocalStore<T>(mutator: (store: LocalStore) => Promise<T> | T) {
+  const pendingMutation = localStoreMutationQueue.then(async () => {
+    return withLocalStoreFileLock(async () => {
+      const store = await readLocalStore();
+      const result = await mutator(store);
+      await writeLocalStore(store);
+      return result;
+    });
+  });
+
+  localStoreMutationQueue = pendingMutation.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  return pendingMutation;
 }
 
 async function resolveStorageMode() {
@@ -215,6 +288,36 @@ export async function ensureCardSchema() {
   `);
 
   await pool.query(`
+    alter table public.users
+    add column if not exists current_streak integer not null default 0;
+  `);
+
+  await pool.query(`
+    alter table public.users
+    add column if not exists last_check_in_date date;
+  `);
+
+  await pool.query(`
+    alter table public.users
+    add column if not exists referral_code text;
+  `);
+
+  await pool.query(`
+    alter table public.users
+    add column if not exists referred_by_telegram_id bigint references public.users(telegram_id) on delete set null;
+  `);
+
+  await pool.query(`
+    update public.users
+    set referral_code = coalesce(referral_code, concat('ref_', telegram_id::text))
+    where referral_code is null;
+  `);
+
+  await pool.query(`
+    create unique index if not exists users_referral_code_idx on public.users (referral_code);
+  `);
+
+  await pool.query(`
     create table if not exists public.cards (
       id bigserial primary key,
       author_telegram_id bigint not null references public.users(telegram_id) on delete cascade,
@@ -245,33 +348,54 @@ export async function ensureCardSchema() {
   schemaReady = true;
 }
 
-export async function upsertUser(user: AuthenticatedAppUser) {
+export async function upsertUser(
+  user: AuthenticatedAppUser,
+  options?: { referralCode?: string | null },
+) {
   const mode = await resolveStorageMode();
 
   if (mode === "local") {
-    const store = await readLocalStore();
-    const existingUser = store.users.find((entry) => entry.telegramId === user.telegramId);
+    await mutateLocalStore((store) => {
+      const existingUser = store.users.find((entry) => entry.telegramId === user.telegramId);
 
-    if (existingUser) {
-      existingUser.username = user.username;
-      existingUser.firstName = user.firstName;
-      existingUser.lastName = user.lastName;
-      existingUser.displayName = user.displayName;
-      existingUser.language = user.language;
-      existingUser.xp = existingUser.xp ?? 0;
-    } else {
-      store.users.push({
-        telegramId: user.telegramId,
-        username: user.username,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        displayName: user.displayName,
-        language: user.language,
-        xp: 0,
-      });
-    }
+      if (existingUser) {
+        existingUser.username = user.username;
+        existingUser.firstName = user.firstName;
+        existingUser.lastName = user.lastName;
+        existingUser.displayName = user.displayName;
+        existingUser.language = user.language;
+        existingUser.xp = existingUser.xp ?? 0;
+        existingUser.currentStreak = getEffectiveStreak(
+          existingUser.lastCheckInDate,
+          existingUser.currentStreak ?? 0,
+        );
+        existingUser.referralCode = existingUser.referralCode || buildReferralCode(user);
+        if (!existingUser.referredByTelegramId && options?.referralCode) {
+          const referredBy = store.users.find((entry) => entry.referralCode === options.referralCode);
 
-    await writeLocalStore(store);
+          if (referredBy && referredBy.telegramId !== user.telegramId) {
+            existingUser.referredByTelegramId = referredBy.telegramId;
+          }
+        }
+      } else {
+        const referredBy = options?.referralCode
+          ? store.users.find((entry) => entry.referralCode === options.referralCode)
+          : undefined;
+        store.users.push({
+          telegramId: user.telegramId,
+          username: user.username,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          displayName: user.displayName,
+          language: user.language,
+          xp: 0,
+          currentStreak: 0,
+          referralCode: buildReferralCode(user),
+          referredByTelegramId:
+            referredBy && referredBy.telegramId !== user.telegramId ? referredBy.telegramId : undefined,
+        });
+      }
+    });
     return;
   }
 
@@ -285,9 +409,10 @@ export async function upsertUser(user: AuthenticatedAppUser) {
         first_name,
         last_name,
         display_name,
-        language
+        language,
+        referral_code
       )
-      values ($1, $2, $3, $4, $5, $6)
+      values ($1, $2, $3, $4, $5, $6, $7)
       on conflict (telegram_id)
       do update set
         username = excluded.username,
@@ -295,6 +420,7 @@ export async function upsertUser(user: AuthenticatedAppUser) {
         last_name = excluded.last_name,
         display_name = excluded.display_name,
         language = excluded.language,
+        referral_code = coalesce(public.users.referral_code, excluded.referral_code),
         updated_at = now()
     `,
     [
@@ -304,8 +430,24 @@ export async function upsertUser(user: AuthenticatedAppUser) {
       user.lastName || null,
       user.displayName,
       user.language,
+      buildReferralCode(user),
     ],
   );
+
+  if (options?.referralCode) {
+    await pool.query(
+      `
+        update public.users as current_user
+        set referred_by_telegram_id = referrer.telegram_id
+        from public.users as referrer
+        where current_user.telegram_id = $1
+          and current_user.referred_by_telegram_id is null
+          and referrer.referral_code = $2
+          and referrer.telegram_id <> $1
+      `,
+      [user.telegramId, options.referralCode],
+    );
+  }
 }
 
 export async function createCard(input: {
@@ -316,27 +458,27 @@ export async function createCard(input: {
   const mode = await resolveStorageMode();
 
   if (mode === "local") {
-    const store = await readLocalStore();
-    const nextId =
-      store.cards.length === 0
-        ? 1
-        : Math.max(...store.cards.map((card) => card.id)) + 1;
+    return mutateLocalStore((store) => {
+      const nextId =
+        store.cards.length === 0
+          ? 1
+          : Math.max(...store.cards.map((card) => card.id)) + 1;
 
-    const card: CardRecord = {
-      id: nextId,
-      caption: input.caption,
-      imageUrl: input.imageUrl,
-      authorTelegramId: input.user.telegramId,
-      authorDisplayName: input.user.displayName,
-      authorUsername: input.user.username,
-      voteCount: 0,
-      userHasVoted: false,
-      createdAt: new Date().toISOString(),
-    };
+      const card: CardRecord = {
+        id: nextId,
+        caption: input.caption,
+        imageUrl: input.imageUrl,
+        authorTelegramId: input.user.telegramId,
+        authorDisplayName: input.user.displayName,
+        authorUsername: input.user.username,
+        voteCount: 0,
+        userHasVoted: false,
+        createdAt: new Date().toISOString(),
+      };
 
-    store.cards.unshift(card);
-    await writeLocalStore(store);
-    return card;
+      store.cards.unshift(card);
+      return card;
+    });
   }
 
   const pool = getPool();
@@ -432,45 +574,44 @@ export async function toggleCardVote(input: {
   const mode = await resolveStorageMode();
 
   if (mode === "local") {
-    const store = await readLocalStore();
-    const card = store.cards.find((entry) => entry.id === input.cardId);
+    return mutateLocalStore((store) => {
+      const card = store.cards.find((entry) => entry.id === input.cardId);
 
-    if (!card) {
-      throw new Error("Card not found.");
-    }
+      if (!card) {
+        throw new Error("Card not found.");
+      }
 
-    if (card.authorTelegramId === input.user.telegramId) {
-      throw new Error("You cannot vote on your own card.");
-    }
+      if (card.authorTelegramId === input.user.telegramId) {
+        throw new Error("You cannot vote on your own card.");
+      }
 
-    const voteIndex = store.votes.findIndex(
-      (vote) => vote.cardId === input.cardId && vote.voterTelegramId === input.user.telegramId,
-    );
-    const author = store.users.find((entry) => entry.telegramId === card.authorTelegramId);
+      const voteIndex = store.votes.findIndex(
+        (vote) => vote.cardId === input.cardId && vote.voterTelegramId === input.user.telegramId,
+      );
+      const author = store.users.find((entry) => entry.telegramId === card.authorTelegramId);
 
-    if (!author) {
-      throw new Error("Card author not found.");
-    }
+      if (!author) {
+        throw new Error("Card author not found.");
+      }
 
-    let userHasVoted = false;
+      let userHasVoted = false;
 
-    if (voteIndex >= 0) {
-      store.votes.splice(voteIndex, 1);
-      author.xp = Math.max(0, author.xp - 2);
-      userHasVoted = false;
-    } else {
-      store.votes.push({ cardId: input.cardId, voterTelegramId: input.user.telegramId });
-      author.xp += 2;
-      userHasVoted = true;
-    }
+      if (voteIndex >= 0) {
+        store.votes.splice(voteIndex, 1);
+        author.xp = Math.max(0, author.xp - 2);
+        userHasVoted = false;
+      } else {
+        store.votes.push({ cardId: input.cardId, voterTelegramId: input.user.telegramId });
+        author.xp += 2;
+        userHasVoted = true;
+      }
 
-    await writeLocalStore(store);
-
-    return {
-      voteCount: store.votes.filter((vote) => vote.cardId === input.cardId).length,
-      userHasVoted,
-      authorXp: author.xp,
-    };
+      return {
+        voteCount: store.votes.filter((vote) => vote.cardId === input.cardId).length,
+        userHasVoted,
+        authorXp: author.xp,
+      };
+    });
   }
 
   const pool = getPool();
@@ -627,4 +768,181 @@ export async function listLeaderboard() {
     xp: row.xp,
     rank: Number(row.rank),
   }));
+}
+
+export async function getTaskSummary(
+  user: AuthenticatedAppUser,
+  origin: string,
+): Promise<TaskSummary> {
+  const mode = await resolveStorageMode();
+
+  if (mode === "local") {
+    const store = await readLocalStore();
+    const currentUser = store.users.find((entry) => entry.telegramId === user.telegramId);
+
+    if (!currentUser) {
+      throw new Error("User not found.");
+    }
+
+    const today = getTodayUtc();
+    const currentStreak = getEffectiveStreak(currentUser.lastCheckInDate, currentUser.currentStreak);
+
+    return {
+      currentStreak,
+      checkedInToday: currentUser.lastCheckInDate === today,
+      referralCode: currentUser.referralCode,
+      referralCount: store.users.filter(
+        (entry) => entry.referredByTelegramId === currentUser.telegramId,
+      ).length,
+      referralLink: `${origin}/?ref=${currentUser.referralCode}`,
+      xp: currentUser.xp,
+    };
+  }
+
+  const pool = getPool();
+  const result = await pool.query<{
+    current_streak: number;
+    last_check_in_date: string | null;
+    referral_code: string;
+    xp: number;
+    referral_count: string;
+  }>(
+    `
+      select
+        users.current_streak,
+        users.last_check_in_date::text,
+        users.referral_code,
+        users.xp,
+        (
+          select count(*)
+          from public.users as referred_users
+          where referred_users.referred_by_telegram_id = users.telegram_id
+        )::text as referral_count
+      from public.users as users
+      where users.telegram_id = $1
+    `,
+    [user.telegramId],
+  );
+
+  const currentUser = result.rows[0];
+
+  if (!currentUser) {
+    throw new Error("User not found.");
+  }
+
+  const today = getTodayUtc();
+  const currentStreak = getEffectiveStreak(
+    currentUser.last_check_in_date || undefined,
+    currentUser.current_streak,
+  );
+
+  return {
+    currentStreak,
+    checkedInToday: currentUser.last_check_in_date === today,
+    referralCode: currentUser.referral_code,
+    referralCount: Number(currentUser.referral_count),
+    referralLink: `${origin}/?ref=${currentUser.referral_code}`,
+    xp: currentUser.xp,
+  };
+}
+
+export async function claimDailyCheckIn(user: AuthenticatedAppUser) {
+  const mode = await resolveStorageMode();
+
+  if (mode === "local") {
+    return mutateLocalStore((store) => {
+      const currentUser = store.users.find((entry) => entry.telegramId === user.telegramId);
+
+      if (!currentUser) {
+        throw new Error("User not found.");
+      }
+
+      const today = getTodayUtc();
+
+      if (currentUser.lastCheckInDate === today) {
+        throw new Error("Daily check-in already claimed today.");
+      }
+
+      const previousDay = getPreviousUtcDay(today);
+      const nextStreak =
+        currentUser.lastCheckInDate === previousDay ? currentUser.currentStreak + 1 : 1;
+
+      currentUser.currentStreak = nextStreak;
+      currentUser.lastCheckInDate = today;
+      currentUser.xp += 10;
+
+      return {
+        currentStreak: currentUser.currentStreak,
+        checkedInToday: true,
+        xp: currentUser.xp,
+      };
+    });
+  }
+
+  const pool = getPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query("begin");
+
+    const result = await client.query<{
+      current_streak: number;
+      last_check_in_date: string | null;
+      xp: number;
+    }>(
+      `
+        select current_streak, last_check_in_date::text, xp
+        from public.users
+        where telegram_id = $1
+        for update
+      `,
+      [user.telegramId],
+    );
+
+    const currentUser = result.rows[0];
+
+    if (!currentUser) {
+      throw new Error("User not found.");
+    }
+
+    const today = getTodayUtc();
+
+    if (currentUser.last_check_in_date === today) {
+      throw new Error("Daily check-in already claimed today.");
+    }
+
+    const previousDay = getPreviousUtcDay(today);
+    const nextStreak =
+      currentUser.last_check_in_date === previousDay ? currentUser.current_streak + 1 : 1;
+
+    const updated = await client.query<{
+      current_streak: number;
+      xp: number;
+    }>(
+      `
+        update public.users
+        set
+          current_streak = $2,
+          last_check_in_date = $3::date,
+          xp = xp + 10,
+          updated_at = now()
+        where telegram_id = $1
+        returning current_streak, xp
+      `,
+      [user.telegramId, nextStreak, today],
+    );
+
+    await client.query("commit");
+
+    return {
+      currentStreak: updated.rows[0].current_streak,
+      checkedInToday: true,
+      xp: updated.rows[0].xp,
+    };
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }

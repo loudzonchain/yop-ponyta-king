@@ -28,6 +28,11 @@ body {
 
 body {
   min-height: 100vh;
+  padding:
+    env(safe-area-inset-top, 0)
+    0
+    env(safe-area-inset-bottom, 0)
+    0;
 }
 
 a {

@@ -3,46 +3,39 @@
 import { useEffect, useState } from "react";
 import { CardsTab } from "@/components/cards-tab";
 import { RanksTab } from "@/components/ranks-tab";
+import { TasksTab } from "@/components/tasks-tab";
+import { readTelegramWebAppContext } from "@/lib/telegram-webapp";
 import { AuthenticatedAppUser } from "@/types/telegram";
 import { listDevUsers } from "@/lib/dev-user";
 
 const tabs = [
   { id: "cards", label: "Cards", copy: "Upload a card and browse the newest submissions." },
-  { id: "tasks", label: "Tasks", copy: "Daily tasks will be added in a later phase." },
+  { id: "tasks", label: "Tasks", copy: "Claim the daily check-in, track your streak, and share your referral link." },
   { id: "ranks", label: "Ranks", copy: "Leaderboard ranks users by XP from votes received." },
   { id: "profile", label: "Profile", copy: "Profile will show Telegram identity and stats later." },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp?: {
-        ready: () => void;
-        expand: () => void;
-        initData?: string;
-      };
-    };
-  }
-}
-
 export function AppShell() {
   const [activeTab, setActiveTab] = useState<TabId>("cards");
   const [initData, setInitData] = useState("");
   const [devUser, setDevUser] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [user, setUser] = useState<AuthenticatedAppUser | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("Authenticating...");
   const availableDevUsers = listDevUsers();
 
   useEffect(() => {
+    const telegramContext = readTelegramWebAppContext();
     const webApp = window.Telegram?.WebApp;
     webApp?.ready();
     webApp?.expand();
-    setInitData(webApp?.initData || "");
+    setInitData(telegramContext.initData);
     const params = new URLSearchParams(window.location.search);
     const queryDevUser = params.get("devUser") || "";
+    const queryReferralCode = params.get("ref") || telegramContext.startParam || "";
     const storedDevUser = window.localStorage.getItem("yop-dev-user") || "";
     const nextDevUser = queryDevUser || storedDevUser;
 
@@ -51,13 +44,18 @@ export function AppShell() {
     }
 
     setDevUser(nextDevUser);
+    setReferralCode(queryReferralCode);
 
-    async function authenticate(currentDevUser: string) {
+    async function authenticate(currentDevUser: string, currentReferralCode: string) {
       try {
         const response = await fetch("/api/auth/telegram", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ initData: webApp?.initData || "", devUser: currentDevUser }),
+          body: JSON.stringify({
+            initData: telegramContext.initData,
+            devUser: currentDevUser,
+            referralCode: currentReferralCode,
+          }),
         });
 
         const payload = (await response.json()) as {
@@ -70,7 +68,11 @@ export function AppShell() {
         }
 
         setUser(payload.user);
-        setStatus(payload.user.authSource === "dev" ? "Development fallback active" : "Connected to Telegram");
+        setStatus(
+          payload.user.authSource === "dev"
+            ? "Development fallback active"
+            : "Connected to Telegram",
+        );
       } catch (caughtError) {
         const message =
           caughtError instanceof Error ? caughtError.message : "Unable to authenticate.";
@@ -79,7 +81,7 @@ export function AppShell() {
       }
     }
 
-    void authenticate(nextDevUser);
+    void authenticate(nextDevUser, queryReferralCode);
   }, []);
 
   function handleDevUserChange(nextDevUser: string) {
@@ -200,6 +202,8 @@ export function AppShell() {
         <p style={{ lineHeight: 1.6, color: "var(--text-muted)" }}>{currentTab.copy}</p>
         {activeTab === "cards" ? (
           <CardsTab initData={initData} devUser={devUser} user={user} />
+        ) : activeTab === "tasks" ? (
+          <TasksTab initData={initData} devUser={devUser} referralCode={referralCode} user={user} />
         ) : activeTab === "ranks" ? (
           <RanksTab devUser={devUser} user={user} />
         ) : (
