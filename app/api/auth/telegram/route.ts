@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateTelegramWebApp } from "@/lib/telegram-auth";
-import { ensureCardSchema, upsertUser } from "@/lib/cards";
+import { ensureCardSchema, getUserSummaryByTelegramId, upsertUser } from "@/lib/cards";
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,8 +8,14 @@ export async function POST(request: NextRequest) {
     const user = authenticateTelegramWebApp(body.initData, { devUser: body.devUser });
     await ensureCardSchema();
     await upsertUser(user, { referralCode: body.referralCode });
+    const persistedUser = await getUserSummaryByTelegramId(user.telegramId);
 
-    return NextResponse.json({ user });
+    return NextResponse.json({
+      user: {
+        ...user,
+        language: persistedUser?.language || user.language,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Authentication failed.";
 

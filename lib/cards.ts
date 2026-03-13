@@ -350,8 +350,9 @@ export async function ensureCardSchema() {
 
 export async function upsertUser(
   user: AuthenticatedAppUser,
-  options?: { referralCode?: string | null },
+  options?: { referralCode?: string | null; preserveLanguage?: boolean },
 ) {
+  const preserveLanguage = options?.preserveLanguage !== false;
   const mode = await resolveStorageMode();
 
   if (mode === "local") {
@@ -363,7 +364,9 @@ export async function upsertUser(
         existingUser.firstName = user.firstName;
         existingUser.lastName = user.lastName;
         existingUser.displayName = user.displayName;
-        existingUser.language = user.language;
+        if (!preserveLanguage) {
+          existingUser.language = user.language;
+        }
         existingUser.xp = existingUser.xp ?? 0;
         existingUser.currentStreak = getEffectiveStreak(
           existingUser.lastCheckInDate,
@@ -419,7 +422,10 @@ export async function upsertUser(
         first_name = excluded.first_name,
         last_name = excluded.last_name,
         display_name = excluded.display_name,
-        language = excluded.language,
+        language = case
+          when $8::boolean then public.users.language
+          else excluded.language
+        end,
         referral_code = coalesce(public.users.referral_code, excluded.referral_code),
         updated_at = now()
     `,
@@ -431,6 +437,7 @@ export async function upsertUser(
       user.displayName,
       user.language,
       buildReferralCode(user),
+      preserveLanguage,
     ],
   );
 
@@ -448,6 +455,32 @@ export async function upsertUser(
       [user.telegramId, options.referralCode],
     );
   }
+}
+
+export async function updateUserLanguage(telegramId: number, language: AuthenticatedAppUser["language"]) {
+  const mode = await resolveStorageMode();
+
+  if (mode === "local") {
+    return mutateLocalStore((store) => {
+      const currentUser = store.users.find((entry) => entry.telegramId === telegramId);
+
+      if (!currentUser) {
+        throw new Error("User not found.");
+      }
+
+      currentUser.language = language;
+    });
+  }
+
+  const pool = getPool();
+  await pool.query(
+    `
+      update public.users
+      set language = $2, updated_at = now()
+      where telegram_id = $1
+    `,
+    [telegramId, language],
+  );
 }
 
 export async function createCard(input: {
@@ -723,14 +756,14 @@ export async function toggleCardVote(input: {
   }
 }
 
-export async function listLeaderboard() {
+export async function listLeaderboard(limit = 100) {
   const mode = await resolveStorageMode();
 
   if (mode === "local") {
     const store = await readLocalStore();
     return [...store.users]
       .sort((left, right) => right.xp - left.xp || left.displayName.localeCompare(right.displayName))
-      .slice(0, 100)
+      .slice(0, limit)
       .map((user, index) => ({
         telegramId: user.telegramId,
         displayName: user.displayName,
@@ -757,8 +790,9 @@ export async function listLeaderboard() {
         row_number() over (order by xp desc, created_at asc) as rank
       from public.users
       order by xp desc, created_at asc
-      limit 100
+      limit $1
     `,
+    [limit],
   );
 
   return result.rows.map((row) => ({
@@ -768,6 +802,100 @@ export async function listLeaderboard() {
     xp: row.xp,
     rank: Number(row.rank),
   }));
+}
+
+export async function getUserSummaryByTelegramId(telegramId: number) {
+  const mode = await resolveStorageMode();
+
+  if (mode === "local") {
+    const store = await readLocalStore();
+    const users = [...store.users].sort(
+      (left, right) => right.xp - left.xp || left.displayName.localeCompare(right.displayName),
+    );
+    const currentUser = users.find((entry) => entry.telegramId === telegramId);
+
+    if (!currentUser) {
+      return null;
+    }
+
+    return {
+      telegramId: currentUser.telegramId,
+      displayName: currentUser.displayName,
+      username: currentUser.username,
+      language: currentUser.language,
+      xp: currentUser.xp,
+      currentStreak: getEffectiveStreak(currentUser.lastCheckInDate, currentUser.currentStreak),
+      checkedInToday: currentUser.lastCheckInDate === getTodayUtc(),
+      cardCount: store.cards.filter((card) => card.authorTelegramId === telegramId).length,
+      rank: users.findIndex((entry) => entry.telegramId === telegramId) + 1,
+    };
+  }
+
+  const pool = getPool();
+  const result = await pool.query<{
+    telegram_id: string;
+    display_name: string;
+    username: string | null;
+    language: AuthenticatedAppUser["language"];
+    xp: number;
+    current_streak: number;
+    last_check_in_date: string | null;
+    card_count: string;
+    rank: string;
+  }>(
+    `
+      select
+        ranked.telegram_id,
+        ranked.display_name,
+        ranked.username,
+        ranked.language,
+        ranked.xp,
+        ranked.current_streak,
+        ranked.last_check_in_date::text,
+        ranked.card_count,
+        ranked.rank
+      from (
+        select
+          users.telegram_id,
+          users.display_name,
+          users.username,
+          users.language,
+          users.xp,
+          users.current_streak,
+          users.last_check_in_date,
+          (
+            select count(*)
+            from public.cards
+            where cards.author_telegram_id = users.telegram_id
+          )::text as card_count,
+          row_number() over (order by users.xp desc, users.created_at asc) as rank
+        from public.users as users
+      ) as ranked
+      where ranked.telegram_id = $1
+    `,
+    [telegramId],
+  );
+
+  const currentUser = result.rows[0];
+
+  if (!currentUser) {
+    return null;
+  }
+
+  return {
+    telegramId: Number(currentUser.telegram_id),
+    displayName: currentUser.display_name,
+    username: currentUser.username || undefined,
+    language: currentUser.language,
+    xp: currentUser.xp,
+    currentStreak: getEffectiveStreak(
+      currentUser.last_check_in_date || undefined,
+      currentUser.current_streak,
+    ),
+    checkedInToday: currentUser.last_check_in_date === getTodayUtc(),
+    cardCount: Number(currentUser.card_count),
+    rank: Number(currentUser.rank),
+  };
 }
 
 export async function getTaskSummary(

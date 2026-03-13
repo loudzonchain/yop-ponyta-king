@@ -31,11 +31,11 @@ function verifyHash(initData: string, botToken: string) {
   return crypto.timingSafeEqual(Buffer.from(expectedHash), Buffer.from(receivedHash));
 }
 
-function parseLanguage(value?: string): AppLanguage {
+export function parseLanguage(value?: string): AppLanguage {
   return value === "ja" ? "ja" : "en";
 }
 
-function mapTelegramUser(user: TelegramUser): AuthenticatedAppUser {
+export function mapTelegramUser(user: TelegramUser): AuthenticatedAppUser {
   const displayName = [user.first_name, user.last_name].filter(Boolean).join(" ");
 
   return {
