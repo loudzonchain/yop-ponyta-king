@@ -207,7 +207,15 @@ export async function handleTelegramStart(update: TelegramUpdate) {
     return;
   }
 
-  const existingUser = await getUserSummaryByTelegramId(fromUser.id);
+  await ensureCardSchema();
+
+  let existingUser = null;
+
+  try {
+    existingUser = await getUserSummaryByTelegramId(fromUser.id);
+  } catch {
+    existingUser = null;
+  }
 
   if (existingUser?.language) {
     await ensureBotUser(fromUser);
