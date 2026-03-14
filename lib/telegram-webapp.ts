@@ -10,6 +10,9 @@ export type TelegramWebAppContext = {
 type TelegramWebApp = {
   ready: () => void;
   expand: () => void;
+  HapticFeedback?: {
+    impactOccurred: (style: "light" | "medium" | "heavy" | "rigid" | "soft") => void;
+  };
   initData?: string;
   initDataUnsafe?: {
     user?: TelegramUser;
@@ -31,6 +34,14 @@ export function getTelegramWebApp(): TelegramWebApp | undefined {
   }
 
   return window.Telegram?.WebApp;
+}
+
+export function triggerLightImpact() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.Telegram?.WebApp?.HapticFeedback?.impactOccurred("light");
 }
 
 export function readTelegramWebAppContext(): TelegramWebAppContext {

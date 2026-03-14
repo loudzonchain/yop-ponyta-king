@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { copy } from "@/lib/i18n";
+import { triggerLightImpact } from "@/lib/telegram-webapp";
 import type { AppLanguage, AuthenticatedAppUser } from "@/types/telegram";
 import { CardRecord } from "@/types/cards";
 
@@ -138,6 +139,8 @@ export function CardsTab({ initData, devUser, user, language, onSummaryRefresh }
       return;
     }
 
+    triggerLightImpact();
+
     const optimisticHasVoted = !currentCard.userHasVoted;
     const optimisticVoteCount = currentCard.voteCount + (optimisticHasVoted ? 1 : -1);
 
@@ -197,21 +200,12 @@ export function CardsTab({ initData, devUser, user, language, onSummaryRefresh }
   }
 
   return (
-    <div style={{ display: "grid", gap: 20 }}>
-      <div
-        style={{
-          borderRadius: 18,
-          padding: 16,
-          background: "var(--panel-muted)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <p style={{ marginTop: 0, color: "var(--text-muted)" }}>
-          {text.uploadCardIntro}
-        </p>
-        <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-          <label style={{ display: "grid", gap: 8 }}>
-            <span style={{ fontWeight: 700 }}>{text.caption}</span>
+    <div className="cards-tab">
+      <section className="cards-submit-panel">
+        <p className="cards-panel-copy">{text.uploadCardIntro}</p>
+        <form onSubmit={handleSubmit} className="cards-form">
+          <label className="cards-field-group">
+            <span className="cards-field-label">{text.caption}</span>
             <textarea
               name="caption"
               value={caption}
@@ -219,144 +213,99 @@ export function CardsTab({ initData, devUser, user, language, onSummaryRefresh }
               maxLength={MAX_CAPTION_LENGTH}
               rows={4}
               placeholder={text.captionPlaceholder}
-              style={fieldStyle}
+              className="cards-field cards-field--textarea"
             />
-            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+            <span className="cards-field-hint">
               {caption.length}/{MAX_CAPTION_LENGTH}
             </span>
           </label>
 
-          <label style={{ display: "grid", gap: 8 }}>
-            <span style={{ fontWeight: 700 }}>{text.image}</span>
+          <label className="cards-field-group">
+            <span className="cards-field-label">{text.image}</span>
             <input
               name="image"
               type="file"
               accept="image/jpeg,image/png,image/gif,image/webp"
               onChange={(event) => setFile(event.target.files?.[0] || null)}
-              style={fieldStyle}
+              className="cards-field cards-field--file"
             />
-            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-              {text.imageHint}
-            </span>
+            <span className="cards-field-hint">{text.imageHint}</span>
           </label>
 
-          <button
-            type="submit"
-            disabled={isSubmitting || !user}
-            style={{
-              border: 0,
-              borderRadius: 14,
-              padding: "14px 16px",
-              fontWeight: 700,
-              cursor: isSubmitting || !user ? "not-allowed" : "pointer",
-              background: isSubmitting || !user ? "rgba(255,255,255,0.12)" : "var(--accent)",
-              color: isSubmitting || !user ? "var(--text-muted)" : "#1b1612",
-            }}
-          >
+          <button type="submit" disabled={isSubmitting || !user} className="cards-submit-button">
             {isSubmitting ? text.uploading : text.submitCard}
           </button>
         </form>
 
-        {error ? <p style={{ marginBottom: 0, color: "#ffb4ab" }}>{error}</p> : null}
-        {success ? <p style={{ marginBottom: 0, color: "#8fe388" }}>{success}</p> : null}
-      </div>
+        {error ? <p className="feedback-text feedback-text--error">{error}</p> : null}
+        {success ? <p className="feedback-text feedback-text--success">{success}</p> : null}
+      </section>
 
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-          <h3 style={{ margin: 0, fontSize: 22 }}>{text.latestCards}</h3>
-          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-            {text.newestFirst}
-          </span>
+      <section className="cards-gallery-section">
+        <div className="cards-gallery-header">
+          <h3 className="cards-gallery-title">{text.latestCards}</h3>
+          <span className="cards-gallery-meta">{text.newestFirst}</span>
         </div>
 
-        {isLoading ? <p style={{ color: "var(--text-muted)" }}>{text.loadingGallery}</p> : null}
+        {isLoading ? <p className="section-status-text">{text.loadingGallery}</p> : null}
 
         {!isLoading && cards.length === 0 ? (
-          <div
-            style={{
-              marginTop: 16,
-              borderRadius: 18,
-              padding: 16,
-              border: "1px dashed var(--border)",
-              color: "var(--text-muted)",
-            }}
-          >
-            {text.noCardsYet}
-          </div>
+          <div className="empty-state-card">{text.noCardsYet}</div>
         ) : null}
 
-        <div
-          style={{
-            marginTop: 16,
-            display: "grid",
-            gap: 14,
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          }}
-        >
-          {cards.map((card) => (
-            <article
-              key={card.id}
-              style={{
-                overflow: "hidden",
-                borderRadius: 18,
-                border: "1px solid var(--border)",
-                background: "rgba(42, 34, 29, 0.86)",
-              }}
-            >
-              <div style={{ position: "relative", aspectRatio: "4 / 5", background: "#120f0d" }}>
-                <Image
-                  src={card.imageUrl}
-                  alt={card.caption}
-                  fill
-                  sizes="(max-width: 768px) 100vw, 33vw"
-                  style={{ objectFit: "cover" }}
-                  unoptimized
-                />
-              </div>
-              <div style={{ padding: 14 }}>
-                <p style={{ marginTop: 0, lineHeight: 1.5 }}>{card.caption}</p>
-                <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                  <div>{card.authorDisplayName}</div>
-                  <div>{new Date(card.createdAt).toLocaleString(dateLocale)}</div>
+        <div className="card-gallery-grid">
+          {cards.map((card) => {
+            const voteDisabled = !user || card.authorTelegramId === user.telegramId;
+
+            return (
+              <article key={card.id} className="card-gallery-item">
+                <div className="card-gallery-item__media">
+                  <Image
+                    src={card.imageUrl}
+                    alt={card.caption}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                    className="card-gallery-item__image"
+                    unoptimized
+                  />
                 </div>
-                <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                  <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{text.voteCount(card.voteCount)}</span>
-                  <button
-                    type="button"
-                    onClick={() => void handleVote(card.id)}
-                    disabled={!user || card.authorTelegramId === user.telegramId}
-                    style={{
-                      border: 0,
-                      borderRadius: 12,
-                      padding: "10px 12px",
-                      fontWeight: 700,
-                      cursor:
-                        !user || card.authorTelegramId === user.telegramId ? "not-allowed" : "pointer",
-                      background: card.userHasVoted ? "var(--accent)" : "rgba(255,255,255,0.08)",
-                      color: card.userHasVoted ? "#1b1612" : "var(--text)",
-                    }}
-                  >
-                    {card.authorTelegramId === user?.telegramId
-                      ? text.yourCard
-                      : card.userHasVoted
-                        ? text.removeVote
-                        : text.vote}
-                  </button>
+                <div className="card-gallery-item__content">
+                  <p className="card-gallery-item__caption">{card.caption}</p>
+                  <div className="card-gallery-item__meta">
+                    <div>{card.authorDisplayName}</div>
+                    <div>{new Date(card.createdAt).toLocaleString(dateLocale)}</div>
+                  </div>
+                  <div className="card-gallery-item__footer">
+                    <span className="card-gallery-item__votes">{text.voteCount(card.voteCount)}</span>
+                    <button
+                      type="button"
+                      onClick={() => void handleVote(card.id)}
+                      disabled={voteDisabled}
+                      className={getVoteButtonClassName(card.userHasVoted, voteDisabled)}
+                    >
+                      {card.authorTelegramId === user?.telegramId
+                        ? text.yourCard
+                        : card.userHasVoted
+                          ? text.removeVote
+                          : text.vote}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
-const fieldStyle: React.CSSProperties = {
-  width: "100%",
-  borderRadius: 14,
-  border: "1px solid var(--border)",
-  background: "rgba(20, 15, 13, 0.8)",
-  color: "var(--text)",
-  padding: "12px 14px",
-};
+function getVoteButtonClassName(isVoted: boolean, isDisabled: boolean) {
+  return [
+    "card-gallery-item__vote-button",
+    isVoted ? "is-voted" : "",
+    isDisabled ? "is-disabled" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}

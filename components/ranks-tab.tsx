@@ -49,65 +49,48 @@ export function RanksTab({ devUser, user, language }: RanksTabProps) {
   }, [devUser, text.loadLeaderboardError]);
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div
-        style={{
-          borderRadius: 18,
-          padding: 16,
-          background: "var(--panel-muted)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <p style={{ margin: 0, color: "var(--text-muted)" }}>
-          {text.leaderboardIntro}
-        </p>
-      </div>
+    <div className="ranks-tab">
+      <section className="leaderboard-intro-panel">
+        <p className="leaderboard-intro-copy">{text.leaderboardIntro}</p>
+      </section>
 
-      {isLoading ? <p style={{ color: "var(--text-muted)" }}>{text.loadingLeaderboard}</p> : null}
-      {error ? <p style={{ color: "#ffb4ab" }}>{error}</p> : null}
+      {isLoading ? <p className="section-status-text">{text.loadingLeaderboard}</p> : null}
+      {error ? <p className="feedback-text feedback-text--error">{error}</p> : null}
 
       {!isLoading && leaderboard.length === 0 ? (
-        <div
-          style={{
-            borderRadius: 18,
-            padding: 16,
-            border: "1px dashed var(--border)",
-            color: "var(--text-muted)",
-          }}
-        >
-          {text.noRankedUsers}
-        </div>
+        <div className="empty-state-card">{text.noRankedUsers}</div>
       ) : null}
 
-      <div style={{ display: "grid", gap: 10 }}>
+      <div className="leaderboard-list">
         {leaderboard.map((entry) => {
           const isCurrentUser = entry.telegramId === user?.telegramId;
+          const rankToneClassName = getRankToneClassName(entry.rank);
 
           return (
             <div
               key={entry.telegramId}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "56px 1fr auto",
-                gap: 12,
-                alignItems: "center",
-                borderRadius: 18,
-                padding: 14,
-                border: "1px solid var(--border)",
-                background: isCurrentUser ? "var(--accent-soft)" : "rgba(42, 34, 29, 0.86)",
-              }}
+              className={["leaderboard-row", isCurrentUser ? "leaderboard-row--current" : ""]
+                .filter(Boolean)
+                .join(" ")}
             >
-              <div style={{ fontSize: 22, fontWeight: 700, color: isCurrentUser ? "var(--accent)" : "var(--text)" }}>
-                #{entry.rank}
+              <div className={["leaderboard-rank", rankToneClassName].join(" ")}>
+                {entry.rank <= 3 ? (
+                  <span className="leaderboard-rank__medal" aria-hidden="true">
+                    {getRankMedal(entry.rank)}
+                  </span>
+                ) : null}
+                <span className="leaderboard-rank__value">#{entry.rank}</span>
               </div>
-              <div>
-                <div style={{ fontWeight: 700 }}>{entry.displayName}</div>
-                <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+              <div className="leaderboard-user">
+                <div className="leaderboard-user__name">{entry.displayName}</div>
+                <div className="leaderboard-user__handle">
                   {entry.username ? `@${entry.username}` : text.noUsername}
                 </div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontWeight: 700 }}>{entry.xp} {text.xp}</div>
+              <div className="leaderboard-score">
+                <div className="leaderboard-score__value">
+                  {entry.xp} {text.xp}
+                </div>
               </div>
             </div>
           );
@@ -115,4 +98,36 @@ export function RanksTab({ devUser, user, language }: RanksTabProps) {
       </div>
     </div>
   );
+}
+
+function getRankMedal(rank: number) {
+  if (rank === 1) {
+    return "🥇";
+  }
+
+  if (rank === 2) {
+    return "🥈";
+  }
+
+  if (rank === 3) {
+    return "🥉";
+  }
+
+  return "";
+}
+
+function getRankToneClassName(rank: number) {
+  if (rank === 1) {
+    return "leaderboard-rank--gold";
+  }
+
+  if (rank === 2) {
+    return "leaderboard-rank--silver";
+  }
+
+  if (rank === 3) {
+    return "leaderboard-rank--bronze";
+  }
+
+  return "leaderboard-rank--default";
 }

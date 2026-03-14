@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listDevUsers } from "@/lib/dev-user";
 import { copy } from "@/lib/i18n";
+import { triggerLightImpact } from "@/lib/telegram-webapp";
 import type { AppLanguage, AuthenticatedAppUser } from "@/types/telegram";
 import { TaskSummary, TaskType } from "@/types/tasks";
 
@@ -130,6 +131,8 @@ export function TasksTab({
       return;
     }
 
+    triggerLightImpact();
+
     setError(null);
     setSuccess(null);
     setClaimingTaskType("daily_check_in");
@@ -162,6 +165,8 @@ export function TasksTab({
       setError(text.authenticateBeforeCheckIn);
       return;
     }
+
+    triggerLightImpact();
 
     setError(null);
     setSuccess(null);
@@ -204,18 +209,9 @@ export function TasksTab({
   }
 
   return (
-    <div style={{ display: "grid", gap: 20 }}>
-      <div
-        style={{
-          borderRadius: 18,
-          padding: 16,
-          background: "var(--panel-muted)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <div
-          style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}
-        >
+    <div className="tasks-tab">
+      <section className="tasks-summary-panel">
+        <div className="tasks-summary-grid">
           <StatCard
             label={text.currentStreak}
             value={summary ? text.currentStreakValue(summary.currentStreak) : "..."}
@@ -230,29 +226,15 @@ export function TasksTab({
           />
           <StatCard label={text.xp} value={summary ? `${summary.xp}` : "..."} />
         </div>
-      </div>
+      </section>
 
-      <div
-        style={{
-          borderRadius: 18,
-          padding: 16,
-          background: "rgba(42, 34, 29, 0.86)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <div style={{ display: "grid", gap: 4 }}>
-          <h3 style={{ margin: 0 }}>{text.allTasks}</h3>
-          <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.6 }}>{text.tasksIntro}</p>
+      <section className="tasks-list-panel">
+        <div className="tasks-list-panel__header">
+          <h3>{text.allTasks}</h3>
+          <p>{text.tasksIntro}</p>
         </div>
 
-        <div
-          style={{
-            marginTop: 16,
-            display: "grid",
-            gap: 14,
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-          }}
-        >
+        <div className="tasks-list-grid">
           {summary?.tasks.map((task) => {
             const content = taskContent[task.taskType];
             const remainingMs = getRemainingMs(task.availableAt, currentTime, task.cooldownRemainingMs);
@@ -264,38 +246,16 @@ export function TasksTab({
             const isCheckInTask = task.taskType === "daily_check_in";
 
             return (
-              <article
-                key={task.taskType}
-                style={{
-                  borderRadius: 16,
-                  padding: 16,
-                  border: "1px solid var(--border)",
-                  background: "rgba(20, 15, 13, 0.55)",
-                  display: "grid",
-                  gap: 12,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>{content.title}</div>
-                    <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                      {content.description}
-                    </p>
+              <article key={task.taskType} className="task-card">
+                <div className="task-card__header">
+                  <div className="task-card__body">
+                    <div className="task-card__title">{content.title}</div>
+                    <p className="task-card__description">{content.description}</p>
                   </div>
-                  <span
-                    style={{
-                      borderRadius: 999,
-                      padding: "6px 10px",
-                      background: "rgba(255,255,255,0.08)",
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {text.taskReward(task.xpReward)}
-                  </span>
+                  <span className="task-card__reward">{text.taskReward(task.xpReward)}</span>
                 </div>
 
-                <div style={{ display: "grid", gap: 6, color: "var(--text-muted)", fontSize: 13 }}>
+                <div className="task-card__meta">
                   <span>{task.claimed ? text.taskCompleted : text.taskAvailable}</span>
                   {task.goal ? <span>{text.taskProgress(task.progress || 0, task.goal)}</span> : null}
                   {showCooldown ? <span>{text.taskCooldown(formatDuration(remainingMs))}</span> : null}
@@ -307,7 +267,7 @@ export function TasksTab({
                     type="button"
                     onClick={() => void handleCheckIn()}
                     disabled={Boolean(claimingTaskType) || !user || task.claimed}
-                    style={getTaskButtonStyle(Boolean(claimingTaskType) || !user || task.claimed)}
+                    className={getTaskButtonClassName(Boolean(claimingTaskType) || !user || task.claimed)}
                   >
                     {task.claimed
                       ? text.checkedInToday
@@ -320,7 +280,7 @@ export function TasksTab({
                     type="button"
                     onClick={() => void handleManualClaim(task.taskType)}
                     disabled={!canClaimManually || isClaiming}
-                    style={getTaskButtonStyle(!canClaimManually || isClaiming)}
+                    className={getTaskButtonClassName(!canClaimManually || isClaiming)}
                   >
                     {isClaiming ? text.claimingTask : content.buttonLabel}
                   </button>
@@ -329,79 +289,38 @@ export function TasksTab({
             );
           })}
         </div>
-      </div>
+      </section>
 
-      <div
-        style={{
-          borderRadius: 18,
-          padding: 16,
-          background: "rgba(42, 34, 29, 0.86)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>{text.referralLink}</h3>
-        <p style={{ color: "var(--text-muted)", lineHeight: 1.6 }}>{text.referralDescription}</p>
-        <input
-          readOnly
-          value={summary?.referralLink || ""}
-          style={{
-            width: "100%",
-            borderRadius: 12,
-            border: "1px solid var(--border)",
-            background: "rgba(20, 15, 13, 0.8)",
-            color: "var(--text)",
-            padding: "12px 14px",
-          }}
-        />
+      <section className="tasks-referral-panel">
+        <h3 className="tasks-referral-panel__title">{text.referralLink}</h3>
+        <p className="tasks-referral-panel__copy">{text.referralDescription}</p>
+        <input readOnly value={summary?.referralLink || ""} className="tasks-referral-input" />
         <button
           type="button"
           onClick={() => void copyReferralLink()}
           disabled={!summary?.referralLink}
-          style={{
-            marginTop: 12,
-            border: 0,
-            borderRadius: 12,
-            padding: "10px 12px",
-            fontWeight: 700,
-            cursor: summary?.referralLink ? "pointer" : "not-allowed",
-            background: "rgba(255,255,255,0.08)",
-            color: "var(--text)",
-          }}
+          className="tasks-copy-button"
         >
           {text.copyLink}
         </button>
 
-        {user?.authSource === "dev" ? (
-          <p style={{ marginBottom: 0, color: "var(--text-muted)", fontSize: 12 }}>
-            {text.localDevHint}
-          </p>
-        ) : null}
+        {user?.authSource === "dev" ? <p className="tasks-dev-hint">{text.localDevHint}</p> : null}
 
         {user?.authSource === "dev" && localDevReferralLinks.length > 0 ? (
-          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          <div className="tasks-dev-links">
             {localDevReferralLinks.map((entry) => (
-              <div
-                key={entry.devUser}
-                style={{
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "rgba(20, 15, 13, 0.55)",
-                  padding: "10px 12px",
-                }}
-              >
-                <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 4 }}>
-                  {text.openAsDevUser(entry.devUser)}
-                </div>
-                <code style={{ wordBreak: "break-all" }}>{entry.link}</code>
+              <div key={entry.devUser} className="tasks-dev-link-card">
+                <div className="tasks-dev-link-card__label">{text.openAsDevUser(entry.devUser)}</div>
+                <code className="tasks-dev-link-card__code">{entry.link}</code>
               </div>
             ))}
           </div>
         ) : null}
-      </div>
+      </section>
 
-      {isLoading ? <p style={{ color: "var(--text-muted)" }}>{text.loadingTasks}</p> : null}
-      {error ? <p style={{ color: "#ffb4ab" }}>{error}</p> : null}
-      {success ? <p style={{ color: "#8fe388" }}>{success}</p> : null}
+      {isLoading ? <p className="section-status-text">{text.loadingTasks}</p> : null}
+      {error ? <p className="feedback-text feedback-text--error">{error}</p> : null}
+      {success ? <p className="feedback-text feedback-text--success">{success}</p> : null}
     </div>
   );
 }
@@ -427,30 +346,15 @@ function formatDuration(milliseconds: number) {
   return [hours, minutes, seconds].map((value) => value.toString().padStart(2, "0")).join(":");
 }
 
-function getTaskButtonStyle(disabled: boolean): React.CSSProperties {
-  return {
-    border: 0,
-    borderRadius: 14,
-    padding: "14px 16px",
-    fontWeight: 700,
-    cursor: disabled ? "not-allowed" : "pointer",
-    background: disabled ? "rgba(255,255,255,0.12)" : "var(--accent)",
-    color: disabled ? "var(--text-muted)" : "#1b1612",
-  };
+function getTaskButtonClassName(disabled: boolean) {
+  return ["task-action-button", disabled ? "is-disabled" : ""].filter(Boolean).join(" ");
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      style={{
-        borderRadius: 14,
-        padding: 14,
-        border: "1px solid var(--border)",
-        background: "rgba(20, 15, 13, 0.55)",
-      }}
-    >
-      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontWeight: 700 }}>{value}</div>
+    <div className="tasks-stat-card">
+      <div className="tasks-stat-card__label">{label}</div>
+      <div className="tasks-stat-card__value">{value}</div>
     </div>
   );
 }

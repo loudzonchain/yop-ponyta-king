@@ -5,7 +5,11 @@ import { CardsTab } from "@/components/cards-tab";
 import { RanksTab } from "@/components/ranks-tab";
 import { TasksTab } from "@/components/tasks-tab";
 import { copy } from "@/lib/i18n";
-import { getTelegramWebApp, readTelegramWebAppContext } from "@/lib/telegram-webapp";
+import {
+  getTelegramWebApp,
+  readTelegramWebAppContext,
+  triggerLightImpact,
+} from "@/lib/telegram-webapp";
 import { listDevUsers } from "@/lib/dev-user";
 import { TaskSummary } from "@/types/tasks";
 import type { AppText } from "@/lib/i18n";
@@ -30,6 +34,7 @@ export function AppShell() {
   const [summary, setSummary] = useState<TaskSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState(copy.en.authenticating);
+  const [isAuthenticating, setIsAuthenticating] = useState(true);
   const [isUpdatingLanguage, setIsUpdatingLanguage] = useState(false);
   const availableDevUsers = listDevUsers();
   const language = user?.language || "en";
@@ -107,6 +112,8 @@ export function AppShell() {
           caughtError instanceof Error ? caughtError.message : copy.en.authenticateError;
         setError(message);
         setStatus(copy.en.authenticationFailed);
+      } finally {
+        setIsAuthenticating(false);
       }
     }
 
@@ -166,6 +173,15 @@ export function AppShell() {
     url.searchParams.set("tab", activeTab);
     window.history.replaceState({}, "", url.toString());
   }, [activeTab]);
+
+  function handleTabChange(nextTab: TabId) {
+    if (nextTab === activeTab) {
+      return;
+    }
+
+    triggerLightImpact();
+    setActiveTab(nextTab);
+  }
 
   async function handleLanguageChange(nextLanguage: AppLanguage) {
     if (!user || nextLanguage === user.language) {
@@ -236,6 +252,21 @@ export function AppShell() {
     } catch {
       // Keep the shell resilient even if the summary endpoint is unavailable.
     }
+  }
+
+  if (isAuthenticating) {
+    return (
+      <main className="loading-screen" aria-busy="true">
+        <div className="loading-screen__panel">
+          <div className="loading-screen__eyebrow">{copy.en.heroTopline}</div>
+          <h1 className="loading-screen__title">{copy.en.title}</h1>
+          <div className="loading-screen__progress" aria-hidden="true">
+            <span className="loading-screen__progress-bar" />
+          </div>
+          <p className="loading-screen__status">Loading...</p>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -334,7 +365,7 @@ export function AppShell() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={active ? "nav-active" : ""}
             >
               <span>{tabIcons[tab.id]}</span>
