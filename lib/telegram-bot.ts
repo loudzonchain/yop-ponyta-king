@@ -1,11 +1,11 @@
 import {
-  ensureCardSchema,
-  getTaskSummary,
   getUserSummaryByTelegramId,
   listLeaderboard,
   updateUserLanguage,
   upsertUser,
-} from "@/lib/cards";
+} from "@/lib/users";
+import { ensureCardSchema } from "@/lib/schema";
+import { getTaskSummary } from "@/lib/tasks";
 import { mapTelegramUser, parseLanguage } from "@/lib/telegram-auth";
 import { AppLanguage, TelegramUser } from "@/types/telegram";
 

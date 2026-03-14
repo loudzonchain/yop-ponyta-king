@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateTelegramWebApp } from "@/lib/telegram-auth";
-import {
-  createCard,
-  ensureCardSchema,
-  listCards,
-  upsertUser,
-  validateCaption,
-  validateCardFile,
-} from "@/lib/cards";
+import { withAuth, withAuthReadOnly } from "@/lib/auth-middleware";
+import { createCard, listCards, validateCaption, validateCardFile } from "@/lib/cards";
 import { saveCardImage } from "@/lib/storage";
+import { upsertUser } from "@/lib/users";
 
 export async function GET(request: NextRequest) {
   try {
-    const viewer = authenticateTelegramWebApp(request.headers.get("x-telegram-init-data"), {
-      devUser: request.headers.get("x-dev-user"),
-    });
-    await ensureCardSchema();
+    const viewer = await withAuthReadOnly(request);
     await upsertUser(viewer);
     const cards = await listCards(viewer.telegramId);
 
@@ -28,16 +19,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await withAuth(request);
     const formData = await request.formData();
-    const initData = formData.get("initData");
-    const devUser = formData.get("devUser");
-    const user = authenticateTelegramWebApp(typeof initData === "string" ? initData : "", {
-      devUser: typeof devUser === "string" ? devUser : null,
-    });
-
-    await ensureCardSchema();
-    await upsertUser(user);
-
     const caption = validateCaption(formData.get("caption"));
     const file = validateCardFile(formData.get("image"));
     const storedFile = await saveCardImage(file);

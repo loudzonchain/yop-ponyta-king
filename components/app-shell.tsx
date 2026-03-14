@@ -4,80 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { CardsTab } from "@/components/cards-tab";
 import { RanksTab } from "@/components/ranks-tab";
 import { TasksTab } from "@/components/tasks-tab";
+import { copy } from "@/lib/i18n";
 import { getTelegramWebApp, readTelegramWebAppContext } from "@/lib/telegram-webapp";
-import { AuthenticatedAppUser, AppLanguage } from "@/types/telegram";
 import { listDevUsers } from "@/lib/dev-user";
 import { TaskSummary } from "@/types/tasks";
+import type { AppText } from "@/lib/i18n";
+import type { AppLanguage, AuthenticatedAppUser } from "@/types/telegram";
 
 type TabId = "cards" | "tasks" | "ranks" | "profile";
-type ShellText = (typeof copy)["en"] | (typeof copy)["ja"];
-
-const copy = {
-  en: {
-    title: "$YOP Ponyta King",
-    subtitle: "Ponyta Ranch-inspired Telegram adventure",
-    statusTelegram: "Connected to Telegram",
-    statusDev: "Development fallback active",
-    displayName: "Display Name",
-    username: "Username",
-    source: "Source",
-    language: "Language",
-    streak: "Streak",
-    xp: "XP",
-    cards: "Cards",
-    tasks: "Tasks",
-    ranks: "Ranks",
-    profile: "Profile",
-    cardsCopy: "Share meme cards with the ranch, then vote on the freshest uploads.",
-    tasksCopy: "Keep your daily streak alive and track referral progress.",
-    ranksCopy: "See where you stand in the Ponyta King leaderboard.",
-    profileCopy: "Your Telegram identity, streak, XP, and growth stats live here.",
-    waiting: "Waiting for auth",
-    unavailable: "Unavailable",
-    profileStats: "Profile Stats",
-    referralCount: "Referrals",
-    checkedIn: "Check-in",
-    checkedInDone: "Done today",
-    checkedInOpen: "Available",
-    sourceTelegram: "telegram",
-    sourceDev: "dev",
-    sourceUnknown: "Unknown",
-    languageToggle: "Language",
-    devUser: "Dev user",
-  },
-  ja: {
-    title: "$YOP Ponyta King",
-    subtitle: "ポニータ牧場風のTelegramミニアプリ",
-    statusTelegram: "Telegram接続中",
-    statusDev: "開発フォールバック中",
-    displayName: "表示名",
-    username: "ユーザー名",
-    source: "認証元",
-    language: "言語",
-    streak: "連続日数",
-    xp: "XP",
-    cards: "カード",
-    tasks: "タスク",
-    ranks: "ランキング",
-    profile: "プロフィール",
-    cardsCopy: "ミームカードを投稿して、新しいカードに投票しましょう。",
-    tasksCopy: "毎日の連続記録を守り、紹介状況を確認しましょう。",
-    ranksCopy: "Ponyta Kingランキングで自分の順位を確認できます。",
-    profileCopy: "Telegram情報、連続記録、XP、紹介数をまとめて表示します。",
-    waiting: "認証待ち",
-    unavailable: "未設定",
-    profileStats: "プロフィール統計",
-    referralCount: "紹介人数",
-    checkedIn: "今日のチェックイン",
-    checkedInDone: "完了",
-    checkedInOpen: "可能",
-    sourceTelegram: "telegram",
-    sourceDev: "dev",
-    sourceUnknown: "不明",
-    languageToggle: "言語",
-    devUser: "開発ユーザー",
-  },
-} as const;
+type ShellText = AppText;
 
 const tabIcons: Record<TabId, string> = {
   cards: "▦",
@@ -94,11 +29,17 @@ export function AppShell() {
   const [user, setUser] = useState<AuthenticatedAppUser | null>(null);
   const [summary, setSummary] = useState<TaskSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState("Authenticating...");
+  const [status, setStatus] = useState(copy.en.authenticating);
   const [isUpdatingLanguage, setIsUpdatingLanguage] = useState(false);
   const availableDevUsers = listDevUsers();
   const language = user?.language || "en";
   const text = copy[language];
+  const sourceLabel =
+    user?.authSource === "telegram"
+      ? text.sourceTelegram
+      : user?.authSource === "dev"
+        ? text.sourceDev
+        : text.sourceUnknown;
 
   const tabs = useMemo(
     () => [
@@ -154,7 +95,7 @@ export function AppShell() {
         };
 
         if (!response.ok || !payload.user) {
-          throw new Error(payload.error || "Unable to authenticate.");
+          throw new Error(payload.error || copy.en.authenticateError);
         }
 
         setUser(payload.user);
@@ -163,9 +104,9 @@ export function AppShell() {
         );
       } catch (caughtError) {
         const message =
-          caughtError instanceof Error ? caughtError.message : "Unable to authenticate.";
+          caughtError instanceof Error ? caughtError.message : copy.en.authenticateError;
         setError(message);
-        setStatus("Authentication failed");
+        setStatus(copy.en.authenticationFailed);
       }
     }
 
@@ -249,13 +190,13 @@ export function AppShell() {
       };
 
       if (!response.ok || !payload.user) {
-        throw new Error(payload.error || "Unable to update language.");
+        throw new Error(payload.error || text.updateLanguageError);
       }
 
       setUser(payload.user);
       setStatus(payload.user.authSource === "dev" ? copy[payload.user.language].statusDev : copy[payload.user.language].statusTelegram);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to update language.");
+      setError(caughtError instanceof Error ? caughtError.message : text.updateLanguageError);
     } finally {
       setIsUpdatingLanguage(false);
     }
@@ -279,7 +220,7 @@ export function AppShell() {
   return (
     <main className="app-shell">
       <header className="ranch-panel ranch-hero">
-        <div className="hero-topline">PONYTA RANCH // TELEGRAM MINI APP</div>
+        <div className="hero-topline">{text.heroTopline}</div>
         <div className="hero-row">
           <div>
             <h1 className="hero-title">{text.title}</h1>
@@ -308,7 +249,7 @@ export function AppShell() {
             <label className="dev-switcher">
               <span>{text.devUser}</span>
               <select value={devUser} onChange={(event) => handleDevUserChange(event.target.value)}>
-                <option value="">Default</option>
+                <option value="">{text.defaultOption}</option>
                 {availableDevUsers.map((entry) => (
                   <option key={entry} value={entry}>
                     {entry}
@@ -322,8 +263,8 @@ export function AppShell() {
         <div className="identity-grid">
           <InfoTile label={text.displayName} value={user?.displayName || text.waiting} />
           <InfoTile label={text.username} value={user?.username ? `@${user.username}` : text.unavailable} />
-          <InfoTile label={text.language} value={language === "ja" ? "Japanese" : "English"} />
-          <InfoTile label={text.source} value={user?.authSource || text.sourceUnknown} />
+          <InfoTile label={text.language} value={language === "ja" ? text.japanese : text.english} />
+          <InfoTile label={text.source} value={sourceLabel} />
         </div>
 
         {error ? <p className="error-text">{error}</p> : null}
@@ -337,11 +278,11 @@ export function AppShell() {
         </div>
 
         {activeTab === "cards" ? (
-          <CardsTab initData={initData} devUser={devUser} user={user} />
+          <CardsTab initData={initData} devUser={devUser} user={user} language={language} />
         ) : activeTab === "tasks" ? (
-          <TasksTab initData={initData} devUser={devUser} referralCode={referralCode} user={user} />
+          <TasksTab initData={initData} devUser={devUser} referralCode={referralCode} user={user} language={language} />
         ) : activeTab === "ranks" ? (
-          <RanksTab devUser={devUser} user={user} />
+          <RanksTab devUser={devUser} user={user} language={language} />
         ) : (
           <ProfilePanel
             text={text}

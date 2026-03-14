@@ -38,15 +38,37 @@ function secretsMatch(left: string, right: string) {
   return crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function hasValidWebhookSecret(request: NextRequest) {
+  const acceptedSecrets = [
+    process.env.TELEGRAM_WEBHOOK_SECRET,
+    process.env.TELEGRAM_BOT_TOKEN,
+    process.env.TELEGRAM_WEBAPP_BOT_TOKEN,
+  ]
+    .map((value) => normalizeSecret(value))
+    .filter(Boolean);
+
+  if (acceptedSecrets.length === 0) {
+    return true;
+  }
+
+  const headerSecret = normalizeSecret(
+    request.headers.get("x-telegram-bot-api-secret-token"),
+  );
+  const querySecret = normalizeSecret(request.nextUrl.searchParams.get("secret"));
+
+  return (
+    acceptedSecrets.some(
+      (acceptedSecret) =>
+        (headerSecret && secretsMatch(headerSecret, acceptedSecret)) ||
+        (querySecret && secretsMatch(querySecret, acceptedSecret)),
+    )
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const expectedSecret = normalizeSecret(process.env.TELEGRAM_WEBHOOK_SECRET);
-    const secret = normalizeSecret(request.headers.get("x-telegram-bot-api-secret-token"));
-
-    if (expectedSecret) {
-      if (!secret || !secretsMatch(secret, expectedSecret)) {
-        return NextResponse.json({ error: "Invalid webhook secret." }, { status: 401 });
-      }
+    if (!hasValidWebhookSecret(request)) {
+      return NextResponse.json({ error: "Invalid webhook secret." }, { status: 401 });
     }
 
     const update = (await request.json()) as TelegramUpdate;

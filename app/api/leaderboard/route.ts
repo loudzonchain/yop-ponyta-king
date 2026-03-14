@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateTelegramWebApp } from "@/lib/telegram-auth";
-import { ensureCardSchema, listLeaderboard, upsertUser } from "@/lib/cards";
+import { withAuthReadOnly } from "@/lib/auth-middleware";
+import { listLeaderboard, upsertUser } from "@/lib/users";
 
 export async function GET(request: NextRequest) {
   try {
-    const viewer = authenticateTelegramWebApp(request.headers.get("x-telegram-init-data"), {
-      devUser: request.headers.get("x-dev-user"),
-    });
-    await ensureCardSchema();
+    const viewer = await withAuthReadOnly(request);
     await upsertUser(viewer);
     const leaderboard = await listLeaderboard();
 

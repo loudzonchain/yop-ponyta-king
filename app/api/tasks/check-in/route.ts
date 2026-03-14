@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateTelegramWebApp } from "@/lib/telegram-auth";
-import { claimDailyCheckIn, ensureCardSchema, upsertUser } from "@/lib/cards";
+import { withAuth } from "@/lib/auth-middleware";
+import { claimDailyCheckIn } from "@/lib/tasks";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as { initData?: string; devUser?: string; referralCode?: string };
-    const user = authenticateTelegramWebApp(body.initData, { devUser: body.devUser });
-
-    await ensureCardSchema();
-    await upsertUser(user, { referralCode: body.referralCode });
+    const body = (await request.clone().json()) as { referralCode?: string };
+    const user = await withAuth(request, { referralCode: body.referralCode });
 
     const result = await claimDailyCheckIn(user);
 

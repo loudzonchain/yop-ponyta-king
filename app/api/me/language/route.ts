@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureCardSchema, getUserSummaryByTelegramId, updateUserLanguage } from "@/lib/cards";
-import { authenticateTelegramWebApp, parseLanguage } from "@/lib/telegram-auth";
+import { withAuthReadOnly } from "@/lib/auth-middleware";
+import { parseLanguage } from "@/lib/telegram-auth";
+import { getUserSummaryByTelegramId, updateUserLanguage } from "@/lib/users";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as {
-      initData?: string;
-      devUser?: string;
+    const body = (await request.clone().json()) as {
       language?: string;
     };
-    const user = authenticateTelegramWebApp(body.initData, { devUser: body.devUser });
+    const user = await withAuthReadOnly(request);
     const language = parseLanguage(body.language);
-
-    await ensureCardSchema();
     await updateUserLanguage(user.telegramId, language);
 
     const updatedUser = await getUserSummaryByTelegramId(user.telegramId);

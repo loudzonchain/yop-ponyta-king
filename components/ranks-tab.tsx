@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AuthenticatedAppUser } from "@/types/telegram";
+import { copy } from "@/lib/i18n";
 import { LeaderboardEntry } from "@/types/cards";
+import type { AppLanguage, AuthenticatedAppUser } from "@/types/telegram";
 
 type RanksTabProps = {
   devUser: string;
   user: AuthenticatedAppUser | null;
+  language: AppLanguage;
 };
 
 type LeaderboardResponse = {
@@ -14,10 +16,11 @@ type LeaderboardResponse = {
   error?: string;
 };
 
-export function RanksTab({ devUser, user }: RanksTabProps) {
+export function RanksTab({ devUser, user, language }: RanksTabProps) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const text = copy[language];
 
   useEffect(() => {
     async function loadLeaderboard() {
@@ -29,13 +32,13 @@ export function RanksTab({ devUser, user }: RanksTabProps) {
         const payload = (await response.json()) as LeaderboardResponse;
 
         if (!response.ok || !payload.leaderboard) {
-          throw new Error(payload.error || "Unable to load leaderboard.");
+          throw new Error(payload.error || text.loadLeaderboardError);
         }
 
         setLeaderboard(payload.leaderboard);
       } catch (caughtError) {
         const message =
-          caughtError instanceof Error ? caughtError.message : "Unable to load leaderboard.";
+          caughtError instanceof Error ? caughtError.message : text.loadLeaderboardError;
         setError(message);
       } finally {
         setIsLoading(false);
@@ -43,7 +46,7 @@ export function RanksTab({ devUser, user }: RanksTabProps) {
     }
 
     void loadLeaderboard();
-  }, [devUser]);
+  }, [devUser, text.loadLeaderboardError]);
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -56,11 +59,11 @@ export function RanksTab({ devUser, user }: RanksTabProps) {
         }}
       >
         <p style={{ margin: 0, color: "var(--text-muted)" }}>
-          Users are ranked by XP earned from votes received on their cards.
+          {text.leaderboardIntro}
         </p>
       </div>
 
-      {isLoading ? <p style={{ color: "var(--text-muted)" }}>Loading leaderboard...</p> : null}
+      {isLoading ? <p style={{ color: "var(--text-muted)" }}>{text.loadingLeaderboard}</p> : null}
       {error ? <p style={{ color: "#ffb4ab" }}>{error}</p> : null}
 
       {!isLoading && leaderboard.length === 0 ? (
@@ -72,7 +75,7 @@ export function RanksTab({ devUser, user }: RanksTabProps) {
             color: "var(--text-muted)",
           }}
         >
-          No ranked users yet. Votes will populate the leaderboard.
+          {text.noRankedUsers}
         </div>
       ) : null}
 
@@ -100,11 +103,11 @@ export function RanksTab({ devUser, user }: RanksTabProps) {
               <div>
                 <div style={{ fontWeight: 700 }}>{entry.displayName}</div>
                 <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                  {entry.username ? `@${entry.username}` : "No username"}
+                  {entry.username ? `@${entry.username}` : text.noUsername}
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontWeight: 700 }}>{entry.xp} XP</div>
+                <div style={{ fontWeight: 700 }}>{entry.xp} {text.xp}</div>
               </div>
             </div>
           );

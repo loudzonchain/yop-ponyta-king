@@ -2,13 +2,15 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { AuthenticatedAppUser } from "@/types/telegram";
+import { copy } from "@/lib/i18n";
+import type { AppLanguage, AuthenticatedAppUser } from "@/types/telegram";
 import { CardRecord } from "@/types/cards";
 
 type CardsTabProps = {
   initData: string;
   devUser: string;
   user: AuthenticatedAppUser | null;
+  language: AppLanguage;
 };
 
 type CardsResponse = {
@@ -29,7 +31,7 @@ type VoteResponse = {
 
 const MAX_CAPTION_LENGTH = 280;
 
-export function CardsTab({ initData, devUser, user }: CardsTabProps) {
+export function CardsTab({ initData, devUser, user, language }: CardsTabProps) {
   const [cards, setCards] = useState<CardRecord[]>([]);
   const [caption, setCaption] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -37,6 +39,8 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const text = copy[language];
+  const dateLocale = language === "ja" ? "ja-JP" : "en-US";
 
   useEffect(() => {
     async function loadCards() {
@@ -51,12 +55,12 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
         const payload = (await response.json()) as CardsResponse;
 
         if (!response.ok || !payload.cards) {
-          throw new Error(payload.error || "Unable to load cards.");
+          throw new Error(payload.error || text.loadCardsError);
         }
 
         setCards(payload.cards);
       } catch (caughtError) {
-        const message = caughtError instanceof Error ? caughtError.message : "Unable to load cards.";
+        const message = caughtError instanceof Error ? caughtError.message : text.loadCardsError;
         setError(message);
       } finally {
         setIsLoading(false);
@@ -64,7 +68,7 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
     }
 
     void loadCards();
-  }, [devUser, initData]);
+  }, [devUser, initData, text.loadCardsError]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -73,12 +77,12 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
     setSuccess(null);
 
     if (!user) {
-      setError("Authenticate first before uploading.");
+      setError(text.authenticateBeforeUpload);
       return;
     }
 
     if (!file) {
-      setError("Choose an image before submitting.");
+      setError(text.chooseImageBeforeSubmit);
       return;
     }
 
@@ -99,13 +103,13 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
       const payload = (await response.json()) as CreateCardResponse;
 
       if (!response.ok || !payload.card) {
-        throw new Error(payload.error || "Unable to upload card.");
+        throw new Error(payload.error || text.uploadCardError);
       }
 
       setCards((currentCards) => [payload.card!, ...currentCards]);
       setCaption("");
       setFile(null);
-      setSuccess("Card uploaded.");
+      setSuccess(text.cardUploaded);
 
       const fileInput = form.elements.namedItem("image");
 
@@ -113,7 +117,7 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
         fileInput.value = "";
       }
     } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : "Unable to upload card.";
+      const message = caughtError instanceof Error ? caughtError.message : text.uploadCardError;
       setError(message);
     } finally {
       setIsSubmitting(false);
@@ -122,7 +126,7 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
 
   async function handleVote(cardId: number) {
     if (!user) {
-      setError("Authenticate first before voting.");
+      setError(text.authenticateBeforeVote);
       return;
     }
 
@@ -158,7 +162,7 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
       const payload = (await response.json()) as VoteResponse;
 
       if (!response.ok || payload.voteCount === undefined || payload.userHasVoted === undefined) {
-        throw new Error(payload.error || "Unable to update vote.");
+        throw new Error(payload.error || text.updateVoteError);
       }
 
       setCards((currentCards) =>
@@ -173,7 +177,7 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
         ),
       );
     } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : "Unable to update vote.";
+      const message = caughtError instanceof Error ? caughtError.message : text.updateVoteError;
       setError(message);
       setCards((currentCards) =>
         currentCards.map((card) =>
@@ -200,18 +204,18 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
         }}
       >
         <p style={{ marginTop: 0, color: "var(--text-muted)" }}>
-          Upload a meme card with an image and caption, then vote on community cards.
+          {text.uploadCardIntro}
         </p>
         <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
           <label style={{ display: "grid", gap: 8 }}>
-            <span style={{ fontWeight: 700 }}>Caption</span>
+            <span style={{ fontWeight: 700 }}>{text.caption}</span>
             <textarea
               name="caption"
               value={caption}
               onChange={(event) => setCaption(event.target.value)}
               maxLength={MAX_CAPTION_LENGTH}
               rows={4}
-              placeholder="Write a caption for your card"
+              placeholder={text.captionPlaceholder}
               style={fieldStyle}
             />
             <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
@@ -220,7 +224,7 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
           </label>
 
           <label style={{ display: "grid", gap: 8 }}>
-            <span style={{ fontWeight: 700 }}>Image</span>
+            <span style={{ fontWeight: 700 }}>{text.image}</span>
             <input
               name="image"
               type="file"
@@ -229,7 +233,7 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
               style={fieldStyle}
             />
             <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-              JPEG, PNG, GIF, or WebP up to 5MB
+              {text.imageHint}
             </span>
           </label>
 
@@ -246,7 +250,7 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
               color: isSubmitting || !user ? "var(--text-muted)" : "#1b1612",
             }}
           >
-            {isSubmitting ? "Uploading..." : "Submit Card"}
+            {isSubmitting ? text.uploading : text.submitCard}
           </button>
         </form>
 
@@ -256,13 +260,13 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
 
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-          <h3 style={{ margin: 0, fontSize: 22 }}>Latest Cards</h3>
+          <h3 style={{ margin: 0, fontSize: 22 }}>{text.latestCards}</h3>
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-            Newest first
+            {text.newestFirst}
           </span>
         </div>
 
-        {isLoading ? <p style={{ color: "var(--text-muted)" }}>Loading gallery...</p> : null}
+        {isLoading ? <p style={{ color: "var(--text-muted)" }}>{text.loadingGallery}</p> : null}
 
         {!isLoading && cards.length === 0 ? (
           <div
@@ -274,7 +278,7 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
               color: "var(--text-muted)",
             }}
           >
-            No cards yet. Upload the first one.
+            {text.noCardsYet}
           </div>
         ) : null}
 
@@ -310,10 +314,10 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
                 <p style={{ marginTop: 0, lineHeight: 1.5 }}>{card.caption}</p>
                 <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
                   <div>{card.authorDisplayName}</div>
-                  <div>{new Date(card.createdAt).toLocaleString()}</div>
+                  <div>{new Date(card.createdAt).toLocaleString(dateLocale)}</div>
                 </div>
                 <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                  <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{card.voteCount} votes</span>
+                  <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{text.voteCount(card.voteCount)}</span>
                   <button
                     type="button"
                     onClick={() => void handleVote(card.id)}
@@ -330,10 +334,10 @@ export function CardsTab({ initData, devUser, user }: CardsTabProps) {
                     }}
                   >
                     {card.authorTelegramId === user?.telegramId
-                      ? "Your card"
+                      ? text.yourCard
                       : card.userHasVoted
-                        ? "Remove Vote"
-                        : "Vote"}
+                        ? text.removeVote
+                        : text.vote}
                   </button>
                 </div>
               </div>

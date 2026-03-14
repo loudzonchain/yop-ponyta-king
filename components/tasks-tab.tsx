@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { listDevUsers } from "@/lib/dev-user";
-import { AuthenticatedAppUser } from "@/types/telegram";
+import { copy } from "@/lib/i18n";
+import type { AppLanguage, AuthenticatedAppUser } from "@/types/telegram";
 import { TaskSummary } from "@/types/tasks";
 
 type TasksTabProps = {
@@ -10,6 +11,7 @@ type TasksTabProps = {
   devUser: string;
   referralCode: string;
   user: AuthenticatedAppUser | null;
+  language: AppLanguage;
 };
 
 type SummaryResponse = {
@@ -24,12 +26,13 @@ type CheckInResponse = {
   error?: string;
 };
 
-export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProps) {
+export function TasksTab({ initData, devUser, referralCode, user, language }: TasksTabProps) {
   const [summary, setSummary] = useState<TaskSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const text = copy[language];
   const localDevReferralLinks = useMemo(() => {
     if (!summary?.referralLink) {
       return [];
@@ -57,12 +60,12 @@ export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProp
         const payload = (await response.json()) as SummaryResponse;
 
         if (!response.ok || !payload.summary) {
-          throw new Error(payload.error || "Unable to load tasks.");
+          throw new Error(payload.error || text.loadTasksError);
         }
 
         setSummary(payload.summary);
       } catch (caughtError) {
-        const message = caughtError instanceof Error ? caughtError.message : "Unable to load tasks.";
+        const message = caughtError instanceof Error ? caughtError.message : text.loadTasksError;
         setError(message);
       } finally {
         setIsLoading(false);
@@ -70,11 +73,11 @@ export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProp
     }
 
     void loadSummary();
-  }, [devUser, initData, referralCode]);
+  }, [devUser, initData, referralCode, text.loadTasksError]);
 
   async function handleCheckIn() {
     if (!user) {
-      setError("Authenticate first before checking in.");
+      setError(text.authenticateBeforeCheckIn);
       return;
     }
 
@@ -91,7 +94,7 @@ export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProp
       const payload = (await response.json()) as CheckInResponse;
 
       if (!response.ok || payload.currentStreak === undefined || payload.xp === undefined) {
-        throw new Error(payload.error || "Unable to check in.");
+        throw new Error(payload.error || text.checkInError);
       }
 
       setSummary((currentSummary) =>
@@ -104,9 +107,9 @@ export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProp
             }
           : currentSummary,
       );
-      setSuccess("Daily check-in claimed.");
+      setSuccess(text.dailyCheckInClaimed);
     } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : "Unable to check in.";
+      const message = caughtError instanceof Error ? caughtError.message : text.checkInError;
       setError(message);
     } finally {
       setIsCheckingIn(false);
@@ -120,9 +123,9 @@ export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProp
 
     try {
       await navigator.clipboard.writeText(summary.referralLink);
-      setSuccess("Referral link copied.");
+      setSuccess(text.referralLinkCopied);
     } catch {
-      setError("Unable to copy referral link.");
+      setError(text.copyReferralLinkError);
     }
   }
 
@@ -137,10 +140,10 @@ export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProp
         }}
       >
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
-          <StatCard label="Current Streak" value={summary ? `${summary.currentStreak} day${summary.currentStreak === 1 ? "" : "s"}` : "..."} />
-          <StatCard label="Check-in Status" value={summary?.checkedInToday ? "Done today" : "Available"} />
-          <StatCard label="Referral Count" value={summary ? String(summary.referralCount) : "..."} />
-          <StatCard label="XP" value={summary ? `${summary.xp}` : "..."} />
+          <StatCard label={text.currentStreak} value={summary ? text.currentStreakValue(summary.currentStreak) : "..."} />
+          <StatCard label={text.checkInStatus} value={summary?.checkedInToday ? text.checkedInDone : text.checkedInOpen} />
+          <StatCard label={text.referralCount} value={summary ? String(summary.referralCount) : "..."} />
+          <StatCard label={text.xp} value={summary ? `${summary.xp}` : "..."} />
         </div>
 
         <button
@@ -159,7 +162,7 @@ export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProp
             color: isCheckingIn || !user || summary?.checkedInToday ? "var(--text-muted)" : "#1b1612",
           }}
         >
-          {summary?.checkedInToday ? "Checked In Today" : isCheckingIn ? "Checking In..." : "Claim Daily Check-in"}
+          {summary?.checkedInToday ? text.checkedInToday : isCheckingIn ? text.checkingIn : text.claimDailyCheckIn}
         </button>
       </div>
 
@@ -171,9 +174,9 @@ export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProp
           border: "1px solid var(--border)",
         }}
       >
-        <h3 style={{ marginTop: 0 }}>Referral Link</h3>
+        <h3 style={{ marginTop: 0 }}>{text.referralLink}</h3>
         <p style={{ color: "var(--text-muted)", lineHeight: 1.6 }}>
-          Share this link. If a new user opens the app with it first, they are recorded as your referral.
+          {text.referralDescription}
         </p>
         <input
           readOnly
@@ -202,12 +205,12 @@ export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProp
             color: "var(--text)",
           }}
         >
-          Copy Link
+          {text.copyLink}
         </button>
 
         {user?.authSource === "dev" ? (
           <p style={{ marginBottom: 0, color: "var(--text-muted)", fontSize: 12 }}>
-            Local dev hint: use one of the links below on another device so the referral opens as a different dev user.
+            {text.localDevHint}
           </p>
         ) : null}
 
@@ -224,7 +227,7 @@ export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProp
                 }}
               >
                 <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 4 }}>
-                  Open as `{entry.devUser}`
+                  {text.openAsDevUser(entry.devUser)}
                 </div>
                 <code style={{ wordBreak: "break-all" }}>{entry.link}</code>
               </div>
@@ -233,7 +236,7 @@ export function TasksTab({ initData, devUser, referralCode, user }: TasksTabProp
         ) : null}
       </div>
 
-      {isLoading ? <p style={{ color: "var(--text-muted)" }}>Loading tasks...</p> : null}
+      {isLoading ? <p style={{ color: "var(--text-muted)" }}>{text.loadingTasks}</p> : null}
       {error ? <p style={{ color: "#ffb4ab" }}>{error}</p> : null}
       {success ? <p style={{ color: "#8fe388" }}>{success}</p> : null}
     </div>

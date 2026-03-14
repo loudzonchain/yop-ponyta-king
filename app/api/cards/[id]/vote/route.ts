@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateTelegramWebApp } from "@/lib/telegram-auth";
-import { ensureCardSchema, toggleCardVote, upsertUser } from "@/lib/cards";
+import { withAuth } from "@/lib/auth-middleware";
+import { toggleCardVote } from "@/lib/cards";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -9,11 +9,7 @@ type RouteContext = {
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const body = (await request.json()) as { initData?: string; devUser?: string };
-    const user = authenticateTelegramWebApp(body.initData || "", { devUser: body.devUser });
-
-    await ensureCardSchema();
-    await upsertUser(user);
+    const user = await withAuth(request);
 
     const result = await toggleCardVote({
       cardId: Number(id),
