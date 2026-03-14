@@ -75,8 +75,31 @@ export type AppText = {
   authenticateBeforeCheckIn: string;
   checkInError: string;
   dailyCheckInClaimed: string;
+  manualTaskClaimed: string;
   referralLinkCopied: string;
   copyReferralLinkError: string;
+  allTasks: string;
+  tasksIntro: string;
+  claimTask: string;
+  claimingTask: string;
+  taskCompleted: string;
+  taskAvailable: string;
+  taskCooldown: (time: string) => string;
+  taskReward: (xp: number) => string;
+  taskProgress: (current: number, total: number) => string;
+  taskLifetime: string;
+  dailyCheckInTitle: string;
+  dailyCheckInDescription: string;
+  submitCardTaskTitle: string;
+  submitCardTaskDescription: string;
+  voteOnThreeCardsTaskTitle: string;
+  voteOnThreeCardsTaskDescription: string;
+  inviteFriendTaskTitle: string;
+  inviteFriendTaskDescription: string;
+  shareOnXTaskTitle: string;
+  shareOnXTaskDescription: string;
+  joinGroupChatTaskTitle: string;
+  joinGroupChatTaskDescription: string;
   localDevHint: string;
   openAsDevUser: (devUser: string) => string;
   leaderboardIntro: string;
@@ -165,8 +188,37 @@ export const copy: AppCopy = {
     authenticateBeforeCheckIn: "Authenticate first before checking in.",
     checkInError: "Unable to check in.",
     dailyCheckInClaimed: "Daily check-in claimed.",
+    manualTaskClaimed: "Task claimed.",
     referralLinkCopied: "Referral link copied.",
     copyReferralLinkError: "Unable to copy referral link.",
+    allTasks: "All Tasks",
+    tasksIntro: "Complete the full daily loop, then tap the manual claims when you've finished them.",
+    claimTask: "Claim",
+    claimingTask: "Claiming...",
+    taskCompleted: "Claimed",
+    taskAvailable: "Available now",
+    taskCooldown: (time) => `Cooldown: ${time}`,
+    taskReward: (xp) => `+${xp} XP`,
+    taskProgress: (current, total) => `${current}/${total} today`,
+    taskLifetime: "One-time task",
+    dailyCheckInTitle: "Daily Check-in",
+    dailyCheckInDescription:
+      "Claim once per UTC day. Your streak adds +2 XP per day, up to +14 bonus on top of the base reward.",
+    submitCardTaskTitle: "Submit a Card",
+    submitCardTaskDescription:
+      "Auto-claimed the first time you post a card each UTC day.",
+    voteOnThreeCardsTaskTitle: "Vote on 3 Cards",
+    voteOnThreeCardsTaskDescription:
+      "Cast 3 votes in a UTC day to auto-claim this reward.",
+    inviteFriendTaskTitle: "Invite a Friend",
+    inviteFriendTaskDescription:
+      "Auto-claimed when a new user joins through your referral link. 72-hour cooldown.",
+    shareOnXTaskTitle: "Share on X/Twitter",
+    shareOnXTaskDescription:
+      "Honor system for now. Claim manually after sharing once every 24 hours.",
+    joinGroupChatTaskTitle: "Join Group Chat",
+    joinGroupChatTaskDescription:
+      "Manual one-time claim after joining the community group chat.",
     localDevHint:
       "Local dev hint: use one of the links below on another device so the referral opens as a different dev user.",
     openAsDevUser: (devUser) => `Open as ${devUser}`,
@@ -252,8 +304,37 @@ export const copy: AppCopy = {
     authenticateBeforeCheckIn: "チェックインする前に認証してください。",
     checkInError: "チェックインできませんでした。",
     dailyCheckInClaimed: "デイリーチェックインを受け取りました。",
+    manualTaskClaimed: "タスクを受け取りました。",
     referralLinkCopied: "紹介リンクをコピーしました。",
     copyReferralLinkError: "紹介リンクをコピーできませんでした。",
+    allTasks: "すべてのタスク",
+    tasksIntro: "毎日の流れを完了したら、手動タスクはここから受け取りましょう。",
+    claimTask: "受け取る",
+    claimingTask: "受け取り中...",
+    taskCompleted: "受け取り済み",
+    taskAvailable: "受け取り可能",
+    taskCooldown: (time) => `クールダウン: ${time}`,
+    taskReward: (xp) => `+${xp} XP`,
+    taskProgress: (current, total) => `今日 ${current}/${total}`,
+    taskLifetime: "一度きりのタスク",
+    dailyCheckInTitle: "デイリーチェックイン",
+    dailyCheckInDescription:
+      "UTC日付ごとに1回受け取れます。連続日数に応じて1日あたり+2XP、最大+14XPのボーナスが加算されます。",
+    submitCardTaskTitle: "カードを投稿",
+    submitCardTaskDescription:
+      "UTC日付ごとの最初のカード投稿時に自動で受け取ります。",
+    voteOnThreeCardsTaskTitle: "3枚に投票",
+    voteOnThreeCardsTaskDescription:
+      "UTC日付内に3回投票すると自動で受け取ります。",
+    inviteFriendTaskTitle: "友だちを招待",
+    inviteFriendTaskDescription:
+      "紹介リンク経由で新規ユーザーが参加すると自動で受け取ります。72時間クールダウンです。",
+    shareOnXTaskTitle: "X/Twitterでシェア",
+    shareOnXTaskDescription:
+      "今は自己申告です。24時間ごとに1回、シェア後に手動で受け取れます。",
+    joinGroupChatTaskTitle: "グループチャット参加",
+    joinGroupChatTaskDescription:
+      "コミュニティのグループチャット参加後に一度だけ手動で受け取れます。",
     localDevHint:
       "ローカル開発のヒント: 別の端末で下のリンクを使うと、別の開発ユーザーとして紹介リンクを開けます。",
     openAsDevUser: (devUser) => `${devUser}として開く`,

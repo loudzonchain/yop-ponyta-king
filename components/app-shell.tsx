@@ -217,6 +217,27 @@ export function AppShell() {
 
   const currentTab = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
+  async function refreshSummary() {
+    try {
+      const response = await fetch("/api/tasks/summary", {
+        cache: "no-store",
+        headers: {
+          "x-telegram-init-data": initData,
+          "x-dev-user": devUser,
+          "x-referral-code": referralCode,
+        },
+      });
+
+      const payload = (await response.json()) as { summary?: TaskSummary };
+
+      if (payload.summary) {
+        setSummary(payload.summary);
+      }
+    } catch {
+      // Keep the shell resilient even if the summary endpoint is unavailable.
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="ranch-panel ranch-hero">
@@ -278,9 +299,22 @@ export function AppShell() {
         </div>
 
         {activeTab === "cards" ? (
-          <CardsTab initData={initData} devUser={devUser} user={user} language={language} />
+          <CardsTab
+            initData={initData}
+            devUser={devUser}
+            user={user}
+            language={language}
+            onSummaryRefresh={refreshSummary}
+          />
         ) : activeTab === "tasks" ? (
-          <TasksTab initData={initData} devUser={devUser} referralCode={referralCode} user={user} language={language} />
+          <TasksTab
+            initData={initData}
+            devUser={devUser}
+            referralCode={referralCode}
+            user={user}
+            language={language}
+            onSummaryChange={setSummary}
+          />
         ) : activeTab === "ranks" ? (
           <RanksTab devUser={devUser} user={user} language={language} />
         ) : (

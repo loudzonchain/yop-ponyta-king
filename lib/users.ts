@@ -1,7 +1,12 @@
 import { getPool } from "@/lib/db";
 import { mutateLocalStore, readLocalStore } from "@/lib/local-store";
 import { resolveStorageMode } from "@/lib/schema";
-import { getEffectiveStreak, getTodayUtc } from "@/lib/tasks";
+import {
+  getEffectiveStreak,
+  getTodayUtc,
+  maybeClaimInviteFriendTaskInDatabase,
+  maybeClaimInviteFriendTaskInStore,
+} from "@/lib/tasks";
 import { AuthenticatedAppUser } from "@/types/telegram";
 
 export function buildReferralCode(user: AuthenticatedAppUser) {
@@ -18,6 +23,7 @@ export async function upsertUser(
   if (mode === "local") {
     await mutateLocalStore((store) => {
       const existingUser = store.users.find((entry) => entry.telegramId === user.telegramId);
+      let referrerTelegramId: number | null = null;
 
       if (existingUser) {
         existingUser.username = user.username;
@@ -39,6 +45,7 @@ export async function upsertUser(
 
           if (referredBy && referredBy.telegramId !== user.telegramId) {
             existingUser.referredByTelegramId = referredBy.telegramId;
+            referrerTelegramId = referredBy.telegramId;
           }
         }
       } else {
@@ -59,6 +66,14 @@ export async function upsertUser(
           referredByTelegramId:
             referredBy && referredBy.telegramId !== user.telegramId ? referredBy.telegramId : undefined,
         });
+
+        if (referredBy && referredBy.telegramId !== user.telegramId) {
+          referrerTelegramId = referredBy.telegramId;
+        }
+      }
+
+      if (referrerTelegramId) {
+        maybeClaimInviteFriendTaskInStore(store, referrerTelegramId);
       }
     });
     return;
@@ -104,7 +119,7 @@ export async function upsertUser(
   );
 
   if (options?.referralCode) {
-    await pool.query(
+    const referralUpdate = await pool.query<{ referrer_telegram_id: string }>(
       `
         update public.users as current_user
         set referred_by_telegram_id = referrer.telegram_id
@@ -113,9 +128,27 @@ export async function upsertUser(
           and current_user.referred_by_telegram_id is null
           and referrer.referral_code = $2
           and referrer.telegram_id <> $1
+        returning referrer.telegram_id::text as referrer_telegram_id
       `,
       [user.telegramId, options.referralCode],
     );
+
+    const referrerTelegramId = referralUpdate.rows[0]?.referrer_telegram_id;
+
+    if (referrerTelegramId) {
+      const client = await pool.connect();
+
+      try {
+        await client.query("begin");
+        await maybeClaimInviteFriendTaskInDatabase(client, Number(referrerTelegramId));
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
   }
 }
 

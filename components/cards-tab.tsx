@@ -11,6 +11,7 @@ type CardsTabProps = {
   devUser: string;
   user: AuthenticatedAppUser | null;
   language: AppLanguage;
+  onSummaryRefresh?: () => Promise<void>;
 };
 
 type CardsResponse = {
@@ -31,7 +32,7 @@ type VoteResponse = {
 
 const MAX_CAPTION_LENGTH = 280;
 
-export function CardsTab({ initData, devUser, user, language }: CardsTabProps) {
+export function CardsTab({ initData, devUser, user, language, onSummaryRefresh }: CardsTabProps) {
   const [cards, setCards] = useState<CardRecord[]>([]);
   const [caption, setCaption] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -110,6 +111,7 @@ export function CardsTab({ initData, devUser, user, language }: CardsTabProps) {
       setCaption("");
       setFile(null);
       setSuccess(text.cardUploaded);
+      await onSummaryRefresh?.();
 
       const fileInput = form.elements.namedItem("image");
 
@@ -176,6 +178,7 @@ export function CardsTab({ initData, devUser, user, language }: CardsTabProps) {
             : card,
         ),
       );
+      await onSummaryRefresh?.();
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : text.updateVoteError;
       setError(message);

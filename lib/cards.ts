@@ -2,6 +2,12 @@ import { QueryResult } from "pg";
 import { getPool } from "@/lib/db";
 import { mutateLocalStore, readLocalStore } from "@/lib/local-store";
 import { resolveStorageMode } from "@/lib/schema";
+import {
+  maybeClaimSubmitCardTaskInDatabase,
+  maybeClaimSubmitCardTaskInStore,
+  recordVoteProgressInDatabase,
+  recordVoteProgressInStore,
+} from "@/lib/tasks";
 import { AuthenticatedAppUser } from "@/types/telegram";
 import { CardRecord } from "@/types/cards";
 
@@ -92,36 +98,51 @@ export async function createCard(input: {
       };
 
       store.cards.unshift(card);
+      maybeClaimSubmitCardTaskInStore(store, input.user.telegramId);
       return card;
     });
   }
 
   const pool = getPool();
-  const result: QueryResult<CardRow> = await pool.query(
-    `
-      insert into public.cards (author_telegram_id, caption, image_url)
-      values ($1, $2, $3)
-      returning
-        id,
-        caption,
-        image_url,
-        author_telegram_id,
-        $4::text as author_display_name,
-        $5::text as author_username,
-        0::int as vote_count,
-        false as user_has_voted,
-        created_at
-    `,
-    [
-      input.user.telegramId,
-      input.caption,
-      input.imageUrl,
-      input.user.displayName,
-      input.user.username || null,
-    ],
-  );
+  const client = await pool.connect();
 
-  return mapCardRow(result.rows[0]);
+  try {
+    await client.query("begin");
+
+    const result: QueryResult<CardRow> = await client.query(
+      `
+        insert into public.cards (author_telegram_id, caption, image_url)
+        values ($1, $2, $3)
+        returning
+          id,
+          caption,
+          image_url,
+          author_telegram_id,
+          $4::text as author_display_name,
+          $5::text as author_username,
+          0::int as vote_count,
+          false as user_has_voted,
+          created_at
+      `,
+      [
+        input.user.telegramId,
+        input.caption,
+        input.imageUrl,
+        input.user.displayName,
+        input.user.username || null,
+      ],
+    );
+
+    await maybeClaimSubmitCardTaskInDatabase(client, input.user.telegramId);
+    await client.query("commit");
+
+    return mapCardRow(result.rows[0]);
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function listCards(viewerTelegramId?: number) {
@@ -217,9 +238,14 @@ export async function toggleCardVote(input: {
         author.xp = Math.max(0, author.xp - 2);
         userHasVoted = false;
       } else {
-        store.votes.push({ cardId: input.cardId, voterTelegramId: input.user.telegramId });
+        store.votes.push({
+          cardId: input.cardId,
+          voterTelegramId: input.user.telegramId,
+          createdAt: new Date().toISOString(),
+        });
         author.xp += 2;
         userHasVoted = true;
+        recordVoteProgressInStore(store, input.user.telegramId);
       }
 
       return {
@@ -302,6 +328,7 @@ export async function toggleCardVote(input: {
         `,
         [card.author_telegram_id],
       );
+      await recordVoteProgressInDatabase(client, input.user.telegramId);
       userHasVoted = true;
     }
 

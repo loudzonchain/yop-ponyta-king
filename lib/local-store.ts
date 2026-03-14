@@ -3,6 +3,7 @@ import path from "node:path";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { AuthenticatedAppUser } from "@/types/telegram";
 import { CardRecord } from "@/types/cards";
+import { TaskClaimType } from "@/types/tasks";
 
 export type LocalUserRecord = {
   telegramId: number;
@@ -18,10 +19,24 @@ export type LocalUserRecord = {
   referredByTelegramId?: number;
 };
 
+export type LocalVoteRecord = {
+  cardId: number;
+  voterTelegramId: number;
+  createdAt: string;
+};
+
+export type LocalTaskClaimRecord = {
+  id: number;
+  telegramId: number;
+  taskType: TaskClaimType;
+  claimedAt: string;
+};
+
 export type LocalStore = {
   users: LocalUserRecord[];
   cards: CardRecord[];
-  votes: { cardId: number; voterTelegramId: number }[];
+  votes: LocalVoteRecord[];
+  taskClaims: LocalTaskClaimRecord[];
 };
 
 let schemaReady = false;
@@ -58,7 +73,7 @@ export async function ensureLocalStore() {
   try {
     await readFile(storePath, "utf8");
   } catch {
-    const initialStore: LocalStore = { users: [], cards: [], votes: [] };
+    const initialStore: LocalStore = { users: [], cards: [], votes: [], taskClaims: [] };
     await writeFile(storePath, JSON.stringify(initialStore, null, 2), "utf8");
   }
 
@@ -86,7 +101,9 @@ export function parseLocalStore(contents: string) {
       recovered: false,
     };
   } catch {
-    const match = contents.match(/\{[\s\S]*"votes"\s*:\s*\[[\s\S]*?\]\s*\}/);
+    const match = contents.match(
+      /\{[\s\S]*"votes"\s*:\s*\[[\s\S]*?\](?:\s*,\s*"taskClaims"\s*:\s*\[[\s\S]*?\])?\s*\}/,
+    );
 
     if (!match) {
       throw new Error("Local cards store is corrupted.");
@@ -97,6 +114,32 @@ export function parseLocalStore(contents: string) {
       recovered: true,
     };
   }
+}
+
+function normalizeVoteRecord(
+  vote: Partial<LocalVoteRecord> & { cardId?: number; voterTelegramId?: number },
+): LocalVoteRecord {
+  return {
+    cardId: Number(vote.cardId || 0),
+    voterTelegramId: Number(vote.voterTelegramId || 0),
+    createdAt: vote.createdAt || new Date(0).toISOString(),
+  };
+}
+
+function normalizeTaskClaimRecord(
+  claim: Partial<LocalTaskClaimRecord> & {
+    id?: number;
+    telegramId?: number;
+    taskType?: TaskClaimType;
+  },
+  fallbackId: number,
+): LocalTaskClaimRecord {
+  return {
+    id: Number(claim.id || fallbackId),
+    telegramId: Number(claim.telegramId || 0),
+    taskType: (claim.taskType || "daily_check_in") as TaskClaimType,
+    claimedAt: claim.claimedAt || new Date(0).toISOString(),
+  };
 }
 
 export async function readLocalStore() {
@@ -113,7 +156,10 @@ export async function readLocalStore() {
       referralCode: user.referralCode || `ref_${user.telegramId}`,
     })),
     cards: (store.cards || []).map(normalizeCardRecord),
-    votes: store.votes || [],
+    votes: (store.votes || []).map(normalizeVoteRecord),
+    taskClaims: (store.taskClaims || []).map((claim, index) =>
+      normalizeTaskClaimRecord(claim, index + 1),
+    ),
   } satisfies LocalStore;
 }
 
