@@ -11,7 +11,11 @@ function createPool() {
     throw new Error("Missing DATABASE_URL.");
   }
 
-  return new Pool({ connectionString });
+  return new Pool({
+    connectionString,
+    ssl: { rejectUnauthorized: false }
+  });
+  ```
 }
 
 export function getPool() {
