@@ -13,7 +13,7 @@ function createPool() {
 
   return new Pool({
     connectionString,
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false } as any
   });
   ```
 }
