@@ -156,11 +156,7 @@ button:active {
 }
 
 .ranch-hero {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  padding: 18px;
-  backdrop-filter: blur(14px);
+  padding: 14px;
 }
 
 .hero-topline {
