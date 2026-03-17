@@ -35,10 +35,7 @@ body {
 body {
   min-height: 100vh;
   padding:
-    env(safe-area-inset-top, 0)
-    0
-    env(safe-area-inset-bottom, 0)
-    0;
+    env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0) 0;
 }
 
 a {
@@ -381,14 +378,19 @@ button:active {
   box-shadow: 0 16px 30px var(--shadow);
 }
 
-.bottom-nav button {
+..bottom-nav button {
   border: 0;
   display: grid;
-  gap: 4px;
+  gap: 2px;
   place-items: center;
   color: var(--text-muted);
   cursor: pointer;
-  min-height: 56px;
+  min-height: 44px;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 4px;
 }
 
 .feedback-text {
@@ -852,38 +854,38 @@ button:active {
   text-align: right;
 }
 
-.card-gallery-grid > :nth-child(2),
-.leaderboard-list > :nth-child(2) {
+.card-gallery-grid> :nth-child(2),
+.leaderboard-list> :nth-child(2) {
   animation-delay: 60ms;
 }
 
-.card-gallery-grid > :nth-child(3),
-.leaderboard-list > :nth-child(3) {
+.card-gallery-grid> :nth-child(3),
+.leaderboard-list> :nth-child(3) {
   animation-delay: 120ms;
 }
 
-.card-gallery-grid > :nth-child(4),
-.leaderboard-list > :nth-child(4) {
+.card-gallery-grid> :nth-child(4),
+.leaderboard-list> :nth-child(4) {
   animation-delay: 180ms;
 }
 
-.card-gallery-grid > :nth-child(5),
-.leaderboard-list > :nth-child(5) {
+.card-gallery-grid> :nth-child(5),
+.leaderboard-list> :nth-child(5) {
   animation-delay: 240ms;
 }
 
-.card-gallery-grid > :nth-child(6),
-.leaderboard-list > :nth-child(6) {
+.card-gallery-grid> :nth-child(6),
+.leaderboard-list> :nth-child(6) {
   animation-delay: 300ms;
 }
 
-.card-gallery-grid > :nth-child(7),
-.leaderboard-list > :nth-child(7) {
+.card-gallery-grid> :nth-child(7),
+.leaderboard-list> :nth-child(7) {
   animation-delay: 360ms;
 }
 
-.card-gallery-grid > :nth-child(8),
-.leaderboard-list > :nth-child(8) {
+.card-gallery-grid> :nth-child(8),
+.leaderboard-list> :nth-child(8) {
   animation-delay: 420ms;
 }
 
@@ -914,6 +916,7 @@ button:active {
 }
 
 @keyframes submit-glow {
+
   0%,
   100% {
     box-shadow:
@@ -959,6 +962,7 @@ button:active {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
